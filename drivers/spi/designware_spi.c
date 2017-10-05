@@ -360,6 +360,7 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
 {
 	struct udevice *bus = dev->parent;
 	struct dw_spi_priv *priv = dev_get_priv(bus);
+	unsigned start;
 	const u8 *tx = dout;
 	u8 *rx = din;
 	int ret = 0;
@@ -415,6 +416,22 @@ static int dw_spi_xfer(struct udevice *dev, unsigned int bitlen,
 
 	/* Start transfer in a polling loop */
 	ret = poll_transfer(priv);
+
+	/*
+	 * Wait for current transmit operation to complete.
+	 * Otherwise if some data still exists in Tx FIFO it can be
+	 * silently flushed, i.e. dropped on disabling of the controller,
+	 * which happens when writing 0 to DW_SPI_SSIENR which happens
+	 * in the begining of new transfer.
+	 */
+	start = get_timer(0);
+	while (!(dw_readl(priv, DW_SPI_SR) & SR_TF_EMPT) ||
+		(dw_readl(priv, DW_SPI_SR) & SR_BUSY)) {
+		if (get_timer(start) > RX_TIMEOUT) {
+			ret = -ETIMEDOUT;
+			break;
+		}
+	}
 
 	return ret;
 }
