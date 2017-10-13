@@ -65,6 +65,12 @@ S:	Maintained
 L:	uboot-snps-arc@synopsys.com
 F:	drivers/clk/clk-hsdk-cgu.c
 
+ARC HSDK CREG GPIO
+M:	Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
+S:	Maintained
+L:	uboot-snps-arc@synopsys.com
+F:	drivers/gpio/hsdk-creg-gpio.c
+
 ARM
 M:	Albert Aribaud <albert.u.boot@aribaud.net>
 S:	Maintained
