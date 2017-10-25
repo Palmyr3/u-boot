@@ -46,6 +46,12 @@ config CLK_BOSTON
 	help
 	  Enable this to support the clocks
 
+config CLK_HSDK
+	bool "Enable pll clock driver for HSDK"
+	depends on CLK
+	help
+	  Enable this to support the pll clocks on HSDK
+
 config CLK_ZYNQ
 	bool "Enable clock driver support for Zynq"
 	depends on CLK && ARCH_ZYNQ
