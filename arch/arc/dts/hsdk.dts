@@ -13,6 +13,7 @@
 
 	aliases {
 		console = &uart0;
+		spi0 = "/spi@f0020000";
 	};
 
 	cpu_card {
@@ -22,6 +23,13 @@
 			clock-frequency = <1000000000>;
 			u-boot,dm-pre-reloc;
 		};
+	};
+
+	periph_clk: periph_clk {
+		#clock-cells = <0>;
+		compatible = "fixed-clock";
+		clock-frequency = <33330000>;
+		u-boot,dm-pre-reloc;
 	};
 
 	uart0: serial0@f0005000 {
@@ -46,5 +54,33 @@
 	ohci@0xf0060000 {
 		compatible = "generic-ohci";
 		reg = <0xf0060000 0x100>;
+	};
+
+	spi@f0020000 {
+		u-boot,dm-pre-reloc;
+		compatible = "snps,dw-apb-ssi";
+		reg = <0xf0020000 0x1000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		spi-max-frequency = <4000000>;
+		clocks = <&periph_clk>;
+		clock-names = "spi_clk";
+		cs-gpio = <&cs_gpio 0>;
+		spi_flash@0 {
+			u-boot,dm-pre-reloc;
+			compatible = "spi-flash";
+			reg = <0>;
+			spi-max-frequency = <4000000>;
+		};
+	};
+
+	cs_gpio: gpio@f00114B0 {
+		u-boot,dm-pre-reloc;
+		compatible = "snps,hsdk-creg-gpio";
+		reg = <0xf00014B0 0x4>;
+		gpio-controller;
+		#gpio-cells = <1>;
+		gpio-bank-name = "hsdk-spi-cs";
+		gpio-count = <1>;
 	};
 };
