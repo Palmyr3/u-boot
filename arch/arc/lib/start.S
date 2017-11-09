@@ -44,6 +44,9 @@ ENTRY(_start)
 #endif
 	sr	r5, [ARC_AUX_IC_CTRL]
 
+	mov	r5, 1
+	sr	r5, [ARC_AUX_IC_IVIC]
+
 1:
 	; Disable/enable D-cache according to configuration
 	lr	r5, [ARC_BCR_DC_BUILD]
@@ -56,6 +59,10 @@ ENTRY(_start)
 	bset	r5, r5, 0		; Disable (+Inv)
 #endif
 	sr	r5, [ARC_AUX_DC_CTRL]
+
+	mov	r5, 1
+	sr	r5, [ARC_AUX_DC_IVDC]
+
 
 1:
 #ifdef CONFIG_ISA_ARCV2
