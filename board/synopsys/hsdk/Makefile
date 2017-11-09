@@ -5,3 +5,4 @@
 #
 
 obj-y	+= hsdk.o
+obj-y	+= hsdk-cmd.o
