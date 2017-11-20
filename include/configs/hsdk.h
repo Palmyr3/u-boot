@@ -61,6 +61,28 @@
  */
 #define CONFIG_ENV_SIZE			SZ_16K
 
+#define CONFIG_EXTRA_ENV_SETTINGS \
+	"core_dccm_0=0x10\0" \
+	"core_dccm_1=0x6\0" \
+	"core_dccm_2=0x10\0" \
+	"core_dccm_3=0x6\0" \
+	"core_iccm_0=0x10\0" \
+	"core_iccm_1=0x6\0" \
+	"core_iccm_2=0x10\0" \
+	"core_iccm_3=0x6\0" \
+	"core_mask=0xF\0" \
+	"dcache_ena=0x1\0" \
+	"icache_ena=0x1\0" \
+	"non_volatile_limit=0xE\0" \
+	"hsdk_hs34=setenv core_mask 0x2; setenv icache_ena 0x0; setenv dcache_ena 0x0; setenv core_iccm_1 0x7; setenv core_dccm_1 0x8; setenv non_volatile_limit 0x0;\0" \
+	"hsdk_hs36=setenv core_mask 0x1; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_0 0x10; setenv core_dccm_0 0x10; setenv non_volatile_limit 0xE;\0" \
+	"hsdk_hs36_ccm=setenv core_mask 0x2; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_1 0x7; setenv core_dccm_1 0x8; setenv non_volatile_limit 0xE;\0" \
+	"hsdk_hs38=setenv core_mask 0x1; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_0 0x10; setenv core_dccm_0 0x10; setenv non_volatile_limit 0xE;\0" \
+	"hsdk_hs38_ccm=setenv core_mask 0x2; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_1 0x7; setenv core_dccm_1 0x8; setenv non_volatile_limit 0xE;\0" \
+	"hsdk_hs38x2=setenv core_mask 0x3; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_0 0x10; setenv core_dccm_0 0x10; setenv non_volatile_limit 0xE; setenv core_iccm_1 0x6; setenv core_dccm_1 0x6;\0" \
+	"hsdk_hs38x3=setenv core_mask 0x7; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_0 0x10; setenv core_dccm_0 0x10; setenv non_volatile_limit 0xE; setenv core_iccm_1 0x6; setenv core_dccm_1 0x6; setenv core_iccm_2 0x10; setenv core_dccm_2 0x10;\0" \
+	"hsdk_hs38x4=setenv core_mask 0xF; setenv icache_ena 0x1; setenv dcache_ena 0x1; setenv core_iccm_0 0x10; setenv core_dccm_0 0x10; setenv non_volatile_limit 0xE; setenv core_iccm_1 0x6; setenv core_dccm_1 0x6; setenv core_iccm_2 0x10; setenv core_dccm_2 0x10; setenv core_iccm_3 0x6; setenv core_dccm_3 0x6;\0"
+
 /*
  * Environment configuration
  */
