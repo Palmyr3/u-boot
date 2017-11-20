@@ -1,4 +1,4 @@
-#define DEBUG
+//#define DEBUG
 
 #include <common.h>
 #include <config.h>
@@ -9,55 +9,73 @@
 #include <linux/io.h>
 #include <asm/arcregs.h>
 
-#define HSDKGO_VERSION	"0.4"
+#ifdef CONFIG_CPU_BIG_ENDIAN
+	#error "hsdk_go will not work with BIG endian CPU"
+#endif
 
-#define MAX_CPUS	4
+#define HSDKGO_VERSION	"0.5"
+
+#define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
+
+#define NR_CPUS		4
 #define MASTER_CPU	0
-#define MAX_CMD_LEN	40
+#define MAX_CMD_LEN	25
 
-#define VAL_NO_XCCM	0x10
+#define NO_CCM		0x10
 
 void smp_set_core_boot_addr(unsigned long addr, int corenr);
 
-struct hsdk_per_cpu_ctl {
-	bool used;
-	u32 entry;
-	u32 icache;
-	u32 dcache;
-	u32 iccm;
-	u32 dccm;
+typedef struct {
+	u32 val;
+	bool set;
+} u32_env;
+
+struct hsdk_env_core_ctl {
+	bool used[NR_CPUS];
+	u32_env entry[NR_CPUS];
+	u32_env iccm[NR_CPUS];
+	u32_env dccm[NR_CPUS];
 };
 
-struct hsdk_common_ctl {
+struct hsdk_env_common_ctl {
 	bool halt_on_boot;
-	u32 core_mask;
-	u32 cpu_freq;
-	u32 axi_freq;
-	u32 tun_freq;
-	u32 nvlim;
+	u32_env core_mask;
+	u32_env cpu_freq;
+	u32_env axi_freq;
+	u32_env tun_freq;
+	u32_env nvlim;
+	u32_env icache;
+	u32_env dcache;
 };
 
-struct hsdk_env_map {
+struct hsdk_env_map_common {
 	const char * const env_name;
-	bool core_specific;
 	bool mandatory;
 	u32 min;
 	u32 max;
-	int (* func)(u32, u32);
+	u32_env *val;
 };
 
-/* Temporary place for slave cpu stack */
+struct hsdk_env_map_core {
+	const char * const env_name;
+	bool mandatory;
+	u32 min[NR_CPUS];
+	u32 max[NR_CPUS];
+	u32_env (*val)[NR_CPUS];
+};
+
+/* Place for slave cpu temporary stack */
 static u32 slave_stack[1024] __attribute__((aligned(4)));
 
-static struct hsdk_per_cpu_ctl hsdk_env_per_cpu_ctl[MAX_CPUS] = {};
-static struct hsdk_common_ctl hsdk_env_common_ctl = {};
+static struct hsdk_env_common_ctl env_common = {};
+static struct hsdk_env_core_ctl env_core = {};
 
 int soc_clk_ctl(const char *name, ulong *rate, bool set)
 {
 	int ret;
 	struct clk clk;
 
-	/* Dummy fmeas device, just to able to use standard clk_* api funcs */
+	/* Dummy fmeas device, just to be able to use standard clk_* api funcs */
 	struct udevice fmeas = {
 		.name = "clk-fmeas",
 		.node = ofnode_path("/clk-fmeas"),
@@ -81,206 +99,164 @@ int soc_clk_ctl(const char *name, ulong *rate, bool set)
 
 	clk_free(&clk);
 
-	printf("HSDK: clock %s rate %lu\n", name, *rate);
+	printf("HSDK: clock '%s' rate %lu MHz\n", name, ceil(*rate, 1000000));
 
 	return 0;
 }
 
-static int core_ccm_check(u32 core, u32 val)
+static bool is_cpu_used(u32 cpu_id)
 {
-	/* Cores 0 and 2 don't have ICCM and DCCM */
-	if ((core == 0 || core == 2) && val != VAL_NO_XCCM) {
-		pr_err("Cores 0 and 2 don't have ICCM and DCCM");
-		return -EINVAL;
-	}
-
-	/* Cores 1 and 3 have ICCM and DCCM */
-	if ((core == 1 || core == 3) && val == VAL_NO_XCCM) {
-		pr_err("Cores 1 and 3 have ICCM and DCCM, we can't disable it");
-		return -EINVAL;
-	}
-
-	return 0;
+	return !!(env_common.core_mask.val & BIT(cpu_id));
 }
 
-int do_core_mask(u32 core, u32 val)
-{
-	hsdk_env_common_ctl.core_mask = val;
-
-	if (val & 0x1)
-		hsdk_env_per_cpu_ctl[0].used = true;
-
-	if (val & 0x2)
-		hsdk_env_per_cpu_ctl[1].used = true;
-
-	if (val & 0x4)
-		hsdk_env_per_cpu_ctl[2].used = true;
-
-	if (val & 0x8)
-		hsdk_env_per_cpu_ctl[3].used = true;
-
-	return 0;
-}
-
-int do_cpu_freq(u32 core, u32 val)
-{
-	hsdk_env_common_ctl.cpu_freq = val;
-	return 0;
-}
-
-int do_axi_freq(u32 core, u32 val)
-{
-	hsdk_env_common_ctl.axi_freq = val;
-	return 0;
-}
-
-int do_tun_freq(u32 core, u32 val)
-{
-	hsdk_env_common_ctl.tun_freq = val;
-	return 0;
-}
-
-int do_core_entry(u32 core, u32 val)
-{
-	hsdk_env_per_cpu_ctl[core].entry = val;
-	return 0;
-}
-
-int do_icache_ena(u32 core, u32 val)
-{
-	hsdk_env_per_cpu_ctl[core].icache = val;
-	return 0;
-}
-
-int do_dcache_ena(u32 core, u32 val)
-{
-	hsdk_env_per_cpu_ctl[core].dcache = val;
-	return 0;
-}
-
-int do_aux_iccm(u32 core, u32 val)
-{
-	if (core_ccm_check(core, val))
-		return -EINVAL;
-
-	hsdk_env_per_cpu_ctl[core].iccm = val;
-	return 0;
-}
-
-int do_aux_dccm(u32 core, u32 val)
-{
-	if (core_ccm_check(core, val))
-		return -EINVAL;
-
-	hsdk_env_per_cpu_ctl[core].dccm = val;
-	return 0;
-}
-
-int do_aux_nvlimn(u32 core, u32 val)
-{
-	hsdk_env_common_ctl.nvlim = val;
-	return 0;
-}
-
-/* TODO: add default values */
-static const struct hsdk_env_map env_map[] = {
-	{ "core_mask",		false, true,	0x1, 0xF,		do_core_mask },
-	/* core_mask must be first table entry */
-	{ "cpu_freq",		false, false,	100, 1000,		do_cpu_freq },
-	{ "axi_freq",		false, false,	200, 800,		do_axi_freq },
-	{ "tun_freq",		false, false,	0, 150,			do_tun_freq },
-	{ "non_volatile_limit", false, true,	0x1, 0xF, 		do_aux_nvlimn },
-
-	{ "core_entry",		true, true,	0, U32_MAX,		do_core_entry },
-	{ "core_icache_ena",	true, true,	0, 1,			do_icache_ena },
-	{ "core_dcache_ena",	true, true,	0, 1,			do_dcache_ena },
-	{ "core_aux_iccm",	true, true,	0x1, VAL_NO_XCCM,	do_aux_iccm },
-	{ "core_aux_dccm",	true, true,	0x1, VAL_NO_XCCM,	do_aux_dccm },
+static const struct hsdk_env_map_common env_map_common[] = {
+	{ "core_mask",		true,	0x1, 0xF,	&env_common.core_mask },
+	{ "cpu_freq",		false,	100, 1000,	&env_common.cpu_freq },
+	{ "axi_freq",		false,	200, 800,	&env_common.axi_freq },
+	{ "tun_freq",		false,	0, 150,		&env_common.tun_freq },
+	{ "non_volatile_limit", true,	0x1, 0xF, 	&env_common.nvlim },
+	{ "icache_ena",		true,	0, 1,		&env_common.icache },
+	{ "dcache_ena",		true,	0, 1,		&env_common.dcache },
 	{}
 };
 
-static int check_env_bound(u32 index, u32 val)
-{
-	if (val < env_map[index].min || val > env_map[index].max) {
-		pr_err("\'%s\' must be between %#x and %#x\n", env_map[index].env_name,
-			env_map[index].min, env_map[index].max);
+static const struct hsdk_env_map_core env_map_core[] = {
+	{ "core_entry",		true,	{0, 0, 0, 0}, {U32_MAX, U32_MAX, U32_MAX, U32_MAX},	&env_core.entry },
+	{ "core_iccm",	true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.iccm },
+	{ "core_dccm",	true,	{NO_CCM, 0, NO_CCM, 0}, {NO_CCM, 0xF, NO_CCM, 0xF},	&env_core.dccm },
+	{}
+};
 
-		return -EINVAL;
+static int env_read_common(u32 index)
+{
+	u32 val;
+
+	if (!env_get_yesno(env_map_common[index].env_name)) {
+		val = (u32)env_get_hex(env_map_common[index].env_name, 0);
+		debug("ENV: %s = %#x\n", env_map_common[index].env_name, val);
+
+		env_map_common[index].val->val = val;
+		env_map_common[index].val->set = true;
 	}
 
 	return 0;
 }
 
-static int check_env_core_specific(u32 env_index, u32 cpu_index)
-{
-	/* We assume if slave CPU[x] is enabled all of mandatory x CPU
-	 * environment variables must be set */
-	if (hsdk_env_per_cpu_ctl[cpu_index].used && env_map[env_index].mandatory) {
-		pr_err("CPU %u is used, but \'%s_%u\' is not defined\n",
-			cpu_index, env_map[env_index].env_name, cpu_index);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int check_env_common(u32 env_index)
-{
-	if (env_map[env_index].mandatory) {
-		pr_err("Variable \'%s\' is mandatory, but it is not defined\n",
-			env_map[env_index].env_name);
-
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-/* TODO: refactor: split variable get and check */
-static int env_process(u32 index)
+/* process core specific variables */
+static int env_read_core(u32 index)
 {
 	u32 i, val;
 	char comand[MAX_CMD_LEN];
 
-	if (!env_map[index].core_specific) {
-		if (!env_get_yesno(env_map[index].env_name)) {
-			val = (u32)env_get_hex(env_map[index].env_name, 0);
-			if (check_env_bound(index, val))
-				return -EINVAL;
-
-			debug("ENV: %s = %#x\n", env_map[index].env_name, val);
-			if (env_map[index].func(0, val))
-				return -EINVAL;
-		} else {
-			/* Check if it is OK, that this variable isn't defined */
-			if (check_env_common(index))
-				return -EINVAL;
-		}
-
-		return 0;
-	}
-
-	/* process core specific variables */
-	for (i = 0; i < MAX_CPUS; i++) {
-		sprintf(comand, "%s_%u", env_map[index].env_name, i);
+	for (i = 0; i < NR_CPUS; i++) {
+		sprintf(comand, "%s_%u", env_map_core[index].env_name, i);
 		if (!env_get_yesno(comand)) {
 			val = (u32)env_get_hex(comand, 0);
-			if (check_env_bound(index, val))
-				return -EINVAL;
-
 			debug("ENV: %s: = %#x\n", comand, val);
-			if (env_map[index].func(i, val))
-				return -EINVAL;
-		} else {
-			/* Check if it is OK, that this variable isn't defined */
-			if (check_env_core_specific(index, i))
-				return -EINVAL;
+
+			(*env_map_core[index].val)[i].val = val;
+			(*env_map_core[index].val)[i].set = true;
 		}
 	}
 
 	return 0;
 }
 
+/* environment common verification */
+static int env_validate_common(u32 index)
+{
+	u32 value = env_map_common[index].val->val;
+	bool set = env_map_common[index].val->set;
+	u32 min = env_map_common[index].min;
+	u32 max = env_map_common[index].max;
+
+	/* Check if environment is mandatory */
+	if (env_map_common[index].mandatory && !set) {
+		pr_err("Variable \'%s\' is mandatory, but it is not defined\n",
+			env_map_common[index].env_name);
+
+		return -EINVAL;
+	}
+
+	/* Check environment boundary */
+	if (set && (value < min || value > max)) {
+		pr_err("Variable \'%s\' must be between %#x and %#x\n",
+			env_map_common[index].env_name, min, max);
+
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int env_validate_core(u32 index)
+{
+	u32 i;
+	u32 value;
+	bool set;
+	bool mandatory = env_map_core[index].mandatory;
+	u32 min, max;
+
+	for (i = 0; i < NR_CPUS; i++) {
+		set = (*env_map_core[index].val)[i].set;
+		value = (*env_map_core[index].val)[i].val;
+
+		/* Check if environment is mandatory */
+		if (is_cpu_used(i) && !(mandatory && set)) {
+			pr_err("CPU %u is used, but \'%s_%u\' is not defined\n",
+				i, env_map_core[index].env_name, i);
+
+			return -EINVAL;
+		}
+
+		min = env_map_core[index].min[i];
+		max = env_map_core[index].max[i];
+
+		/* Check environment boundary */
+		if (set && (value < min || value > max)) {
+			pr_err("Variable \'%s_%u\' must be between %#x and %#x\n",
+				env_map_core[index].env_name, i, min, max);
+
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+static int env_process_and_validate(void)
+{
+	u32 i;
+	int ret;
+
+	/* Generic read */
+	for (i = 0; env_map_common[i].env_name; i++) {
+		ret = env_read_common(i);
+		if (ret)
+			return ret;
+	}
+
+	for (i = 0; env_map_core[i].env_name; i++) {
+		ret = env_read_core(i);
+		if (ret)
+			return ret;
+	}
+
+	/* Generic validate */
+	for (i = 0; env_map_common[i].env_name; i++) {
+		ret = env_validate_common(i);
+		if (ret)
+			return ret;
+	}
+
+	for (i = 0; env_map_core[i].env_name; i++) {
+		ret = env_validate_core(i);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
 
 #define APT_SHIFT		28
 
@@ -311,25 +287,25 @@ static void smp_init_slave_cpu_func(u32 core)
 	unsigned int r;
 
 	/* ICCM move if exists */
-	if (hsdk_env_per_cpu_ctl[core].iccm != VAL_NO_XCCM) {
+	if (env_core.iccm[core].val != NO_CCM) {
 		r = ARC_REG_AUX_ICCM;
-		write_aux_reg(r, hsdk_env_per_cpu_ctl[core].iccm << APT_SHIFT);
+		write_aux_reg(r, env_core.iccm[core].val << APT_SHIFT);
 	}
 
 	/* DCCM move if exists */
-	if (hsdk_env_per_cpu_ctl[core].dccm != VAL_NO_XCCM) {
+	if (env_core.dccm[core].val != NO_CCM) {
 		r = ARC_REG_AUX_DCCM;
-		write_aux_reg(r, hsdk_env_per_cpu_ctl[core].dccm << APT_SHIFT);
+		write_aux_reg(r, env_core.dccm[core].val << APT_SHIFT);
 	}
 
 	/* i$ enable if required (it is disabled by default) */
-	if (hsdk_env_per_cpu_ctl[core].icache) {
+	if (env_common.icache.val) {
 		r = ARC_AUX_IC_CTRL;
 		write_aux_reg(r, read_aux_reg(r) & ~IC_CTRL_CACHE_DISABLE);
 	}
 
 	/* d$ enable if required (it is disabled by default) */
-	if (hsdk_env_per_cpu_ctl[core].dcache) {
+	if (env_common.dcache.val) {
 		r = ARC_AUX_DC_CTRL;
 		write_aux_reg(r, read_aux_reg(r) & ~(DC_CTRL_CACHE_DISABLE | DC_CTRL_INV_MODE_FLUSH));
 	}
@@ -337,7 +313,7 @@ static void smp_init_slave_cpu_func(u32 core)
 
 static void init_master_nvlim(void)
 {
-	u32 val = hsdk_env_common_ctl.nvlim << APT_SHIFT;
+	u32 val = env_common.nvlim.val << APT_SHIFT;
 
 	flush_dcache_all();
 	write_aux_reg(AUX_NON_VOLATILE_LIMIT, val);
@@ -354,14 +330,14 @@ static void init_master_icache(void)
 
 #ifndef CONFIG_SYS_ICACHE_OFF
 	/* enable if required, else - nothing to do */
-	if (hsdk_env_per_cpu_ctl[MASTER_CPU].icache) {
+	if (env_common.icache.val) {
 		r = ARC_AUX_IC_CTRL;
 		write_aux_reg(r, read_aux_reg(r) & ~IC_CTRL_CACHE_DISABLE);
 	}
 #else
 	/* disable if required, else - nothing to do (we will invalidate i$
 	 * just before app launch) */
-	if (!hsdk_env_per_cpu_ctl[MASTER_CPU].icache) {
+	if (!env_common.icache.val) {
 		/* next code copied from board_hsdk.c */
 		/* instruction cache invalidate */
 		write_aux_reg(ARC_AUX_IC_IVIC, 0x00000001U);
@@ -382,14 +358,14 @@ static void init_master_dcache(void)
 
 #ifndef CONFIG_SYS_ICACHE_OFF
 	/* enable if required, else - nothing to do */
-	if (hsdk_env_per_cpu_ctl[MASTER_CPU].dcache) {
+	if (env_common.dcache.val) {
 		r = ARC_AUX_DC_CTRL;
 		write_aux_reg(r, read_aux_reg(r) & ~(DC_CTRL_CACHE_DISABLE | DC_CTRL_INV_MODE_FLUSH));
 	}
 #else
 	/* disable if required, else - nothing to do (we will flush d$ and sl$
 	 * just before app launch) */
-	if (!hsdk_env_per_cpu_ctl[MASTER_CPU].dcache) {
+	if (!env_common.dcache.val) {
 		/* next code copied from board_hsdk.c */
 		flush_dcache_all(); /* TODO: it is OK if we flush SL$ too? */
 		/* data cache ctrl: invalidate mode to: invalidate dc and flush
@@ -451,7 +427,7 @@ static void smp_kick_cpu_x(u32 cpu_id)
 {
 	int cmd = readl((void __iomem *)CREG_CPU_START);
 
-	if (cpu_id > MAX_CPUS)
+	if (cpu_id > NR_CPUS)
 		return;
 
 	cmd &= ~CPU_START_MASK;
@@ -465,7 +441,7 @@ static u32 prepare_cpu_ctart_reg(void)
 
 	cmd &= ~CPU_START_MASK;
 
-	return cmd | hsdk_env_common_ctl.core_mask;
+	return cmd | env_common.core_mask.val;
 }
 
 volatile u32 data_flag;
@@ -504,7 +480,7 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 	nop_instr();
 
 	/* Run our program */
-	((void (*)(void))(hsdk_env_per_cpu_ctl[get_this_cpu_id()].entry))();
+	((void (*)(void))(env_core.entry[get_this_cpu_id()].val))();
 
 	/* Something went terribly wrong */
 	while (true)
@@ -547,14 +523,14 @@ static void do_init_slave_cpus(void)
 {
 	u32 i;
 
-	for (i = 1; i < MAX_CPUS; i++)
-		if (hsdk_env_per_cpu_ctl[i].used)
+	for (i = 1; i < NR_CPUS; i++)
+		if (env_core.used[i])
 			do_init_slave_cpu(i);
 }
 
 static void do_init_master_cpu(void)
 {
-	if (hsdk_env_per_cpu_ctl[MASTER_CPU].used) {
+	if (env_core.used[MASTER_CPU]) {
 		init_master_icache();
 		init_master_dcache();
 	}
@@ -572,62 +548,60 @@ static int check_master_cpu_id(void)
 	return -ENOENT;
 }
 
-static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int prepare_cpus(u32 *cpu_start_reg)
 {
-	u32 i, reg;
+	u32 i;
 	ulong rate;
+	bool set;
 	int ret;
-
-	printf("HSDK: hsdk_go version: %s\n", HSDKGO_VERSION);
-
-	/* Check for 'halt' parameter. 'halt' = enter halt-mode just before
-	 * starting the application; can be used for debug */
-	if (argc > 1) {
-		hsdk_env_common_ctl.halt_on_boot = !strcmp(argv[1], "halt");
-		if (!hsdk_env_common_ctl.halt_on_boot) {
-			pr_err("Unrecognised parameter: \'%s\'\n", argv[1]);
-			return -EINVAL;
-		}
-	}
 
 	ret = check_master_cpu_id();
 	if (ret)
 		return ret;
 
-	for (i = 0; env_map[i].env_name; i++) {
-		ret = env_process(i);
-		if (ret)
-			return ret;
+	ret = env_process_and_validate();
+	if (ret)
+		return ret;
+
+	for (i = 0; i < NR_CPUS; i++) {
+		env_core.used[i] = is_cpu_used(i);
 	}
 
 	do_init_slave_cpus();
 
-	/* TODO: set frequency, not only read */
-	soc_clk_ctl("cpu-clk", &rate, false);
+	rate = env_common.cpu_freq.val * 1000000;
+	set = env_common.cpu_freq.set;
+	soc_clk_ctl("cpu-clk", &rate, set);
+	/* TODO: set AXI and TUN frequency, not only read */
 	soc_clk_ctl("sys-clk", &rate, false);
-	soc_clk_ctl("ddr-clk", &rate, false);
 	soc_clk_ctl("tun-clk", &rate, false);
+	soc_clk_ctl("ddr-clk", &rate, false);
 
 	/* A multi-core ARC HS configuration always includes only one
 	 * AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
 	init_master_nvlim();
 
 	/* Prepare CREG_CPU_START for kicking chosen CPUs */
-	reg = prepare_cpu_ctart_reg();
+	*cpu_start_reg = prepare_cpu_ctart_reg();
 
 	do_init_master_cpu();
 
+	return 0;
+}
+
+static int hsdk_go_run(u32 cpu_start_reg)
+{
 	/* Cleanup caches, disable interrupts */
 	cleanup_before_go();
 
-	if (hsdk_env_common_ctl.halt_on_boot)
+	if (env_common.halt_on_boot)
 		this_cpu_halt();
 
 	/* Kick chosen CPUs */
-	writel(reg, (void __iomem *)CREG_CPU_START);
+	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
 
-	if (hsdk_env_per_cpu_ctl[MASTER_CPU].used)
-		((void (*)(void))(hsdk_env_per_cpu_ctl[MASTER_CPU].entry))();
+	if (env_core.used[MASTER_CPU])
+		((void (*)(void))(env_core.entry[MASTER_CPU].val))();
 	else
 		this_cpu_halt();
 
@@ -639,6 +613,127 @@ static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		this_cpu_halt();
 
 	return 0;
+}
+
+static int bootm_run(u32 cpu_start_reg)
+{
+	debug("bootm cpumask: %#x\n", cpu_start_reg);
+
+	/* Cleanup caches, disable interrupts */
+	cleanup_before_go();
+
+	/* Kick chosen CPUs */
+	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
+
+	return 0;
+}
+
+static int hsdk_go_prepare_and_run(void)
+{
+	int ret;
+	u32 reg;
+
+	ret = prepare_cpus(&reg);
+	if (ret)
+		return ret;
+
+	return hsdk_go_run(reg);
+}
+
+int bootm_prepare_and_run(u32 entry)
+{
+	int ret;
+	u32 i, reg;
+	char comand[MAX_CMD_LEN];
+
+	/* override core entry env by value from image*/
+	for (i = 0; i < NR_CPUS; i++) {
+		sprintf(comand, "%s_%u", "core_entry", i);
+		env_set_hex(comand, entry);
+	}
+
+	ret = prepare_cpus(&reg);
+	if (ret)
+		return ret;
+
+	return bootm_run(reg);
+}
+
+//static int prepare_and_run(void)
+//{
+//	u32 i, reg;
+//	ulong rate;
+//	int ret;
+//
+//	ret = check_master_cpu_id();
+//	if (ret)
+//		return ret;
+//
+//	ret = env_process_and_validate();
+//	if (ret)
+//		return ret;
+//
+//	for (i = 0; i < NR_CPUS; i++) {
+//		env_core.used[i] = is_cpu_used(i);
+//	}
+//
+//	do_init_slave_cpus();
+//
+//	/* TODO: set frequency, not only read */
+//	soc_clk_ctl("cpu-clk", &rate, false);
+//	soc_clk_ctl("sys-clk", &rate, false);
+//	soc_clk_ctl("ddr-clk", &rate, false);
+//	soc_clk_ctl("tun-clk", &rate, false);
+//
+//	/* A multi-core ARC HS configuration always includes only one
+//	 * AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
+//	init_master_nvlim();
+//
+//	/* Prepare CREG_CPU_START for kicking chosen CPUs */
+//	reg = prepare_cpu_ctart_reg();
+//
+//	do_init_master_cpu();
+//
+//	/* Cleanup caches, disable interrupts */
+//	cleanup_before_go();
+//
+//	if (env_common.halt_on_boot)
+//		this_cpu_halt();
+//
+//	/* Kick chosen CPUs */
+//	writel(reg, (void __iomem *)CREG_CPU_START);
+//
+//	if (env_core.used[MASTER_CPU])
+//		((void (*)(void))(env_core.entry[MASTER_CPU].val))();
+//	else
+//		this_cpu_halt();
+//
+//	pr_err("u-boot still runs on cpu [%d]\n", get_this_cpu_id());
+//
+//	/* We will never return after executing our program if master cpu used
+//	 * otherwise halt master cpu manually */
+//	while (true)
+//		this_cpu_halt();
+//
+//	return 0;
+//}
+
+static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	/* TODO: delete after release */
+	printf("HSDK: hsdk_go version: %s\n", HSDKGO_VERSION);
+
+	/* Check for 'halt' parameter. 'halt' = enter halt-mode just before
+	 * starting the application; can be used for debug */
+	if (argc > 1) {
+		env_common.halt_on_boot = !strcmp(argv[1], "halt");
+		if (!env_common.halt_on_boot) {
+			pr_err("Unrecognised parameter: \'%s\'\n", argv[1]);
+			return -EINVAL;
+		}
+	}
+
+	return hsdk_go_prepare_and_run();
 }
 
 U_BOOT_CMD(

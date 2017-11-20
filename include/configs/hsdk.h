@@ -79,4 +79,7 @@
  */
 #define CONFIG_BOUNCE_BUFFER
 
+/* Cli configuration */
+#define CONFIG_SYS_CBSIZE		2048
+
 #endif /* _CONFIG_HSDK_H_ */

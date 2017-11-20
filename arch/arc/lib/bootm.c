@@ -58,8 +58,7 @@ static void boot_prep_linux(bootm_headers_t *images)
 		hang();
 }
 
-__weak void smp_set_core_boot_addr(unsigned long addr, int corenr) {}
-__weak void smp_kick_all_cpus(void) {}
+__weak int bootm_prepare_and_run(u32 entry) { return 0; }
 
 /* Subcommand: GO */
 static void boot_jump_linux(bootm_headers_t *images, int flag)
@@ -88,11 +87,13 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 		r2 = (unsigned int)env_get("bootargs");
 	}
 
-	smp_set_core_boot_addr((unsigned long)kernel_entry, -1);
-	smp_kick_all_cpus();
+	if (!fake) {
+		//TODO: split for prepare and run
+		if (bootm_prepare_and_run((u32)kernel_entry))
+			return;
 
-	if (!fake)
 		kernel_entry(r0, 0, r2);
+	}
 }
 
 int do_bootm_linux(int flag, int argc, char *argv[], bootm_headers_t *images)
