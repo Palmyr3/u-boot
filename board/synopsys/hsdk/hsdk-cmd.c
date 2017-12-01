@@ -9,6 +9,7 @@
 #include <linux/io.h>
 #include <asm/arcregs.h>
 
+
 #ifdef CONFIG_CPU_BIG_ENDIAN
 	#error "hsdk_go will not work with BIG endian CPU"
 #endif
@@ -90,7 +91,7 @@ int soc_clk_ctl(const char *name, ulong *rate, bool set)
 	}
 
 	ret = clk_enable(&clk);
-	if (ret && ret != -ENOSYS)
+	if (ret && ret != -ENOSYS && ret != -ENOTSUPP)
 		return ret;
 
 	if (set) {
@@ -638,10 +639,7 @@ static void setup_clocks(void)
 		rate = env_common.cpu_freq.val * HZ_IN_MHZ;
 		soc_clk_ctl("cpu-pll", &rate, true); /* 100MHz - 1GHz is OK for PLL */
 		soc_clk_ctl("cpu-clk", &rate, true); /* div factor = 1 */
-	} else {
-		soc_clk_ctl("cpu-clk", &rate, false);
 	}
-	printf("HSDK: clock '%s' rate %lu MHz\n", "cpu-clk", ceil(rate, HZ_IN_MHZ));
 
 	/* Setup TUN clock */
 	if (env_common.tun_freq.set) {
@@ -663,10 +661,7 @@ static void setup_clocks(void)
 			/* 25 MHz  : PLL - DNC;    DIV = OFF */
 			// TODO: add
 		}
-	} else {
-		soc_clk_ctl("tun-clk", &rate, false);
 	}
-	printf("HSDK: clock '%s' rate %lu MHz\n", "tun-clk", ceil(rate, HZ_IN_MHZ));
 
 	if (env_common.axi_freq.set) {
 		rate = env_common.axi_freq.val * HZ_IN_MHZ;
@@ -734,6 +729,13 @@ static void setup_clocks(void)
 		tmp_rate = 50 * HZ_IN_MHZ;
 		soc_clk_ctl("sys-ebi", &tmp_rate, true);
 	}
+
+	soc_clk_ctl("cpu-clk", &rate, false);
+	printf("HSDK: clock '%s' rate %lu MHz\n", "cpu-clk", ceil(rate, HZ_IN_MHZ));
+
+	soc_clk_ctl("tun-clk", &rate, false);
+	printf("HSDK: clock '%s' rate %lu MHz\n", "tun-clk", ceil(rate, HZ_IN_MHZ));
+
 	soc_clk_ctl("sys-axi", &rate, false);
 	printf("HSDK: clock '%s' rate %lu MHz\n", "axi-clk", ceil(rate, HZ_IN_MHZ));
 
@@ -757,7 +759,7 @@ static int check_master_cpu_id(void)
 	if (CPU_ID_GET() == MASTER_CPU)
 		return 0;
 
-	pr_err("u-boot runs on non-master cpu with id: %u\n", CPU_ID_GET());
+	pr_err("u-boot runs on non-master cpu with id: %lu\n", CPU_ID_GET());
 
 	return -ENOENT;
 }
@@ -809,7 +811,7 @@ static int hsdk_go_run(u32 cpu_start_reg)
 	else
 		this_cpu_halt();
 
-	pr_err("u-boot still runs on cpu [%d]\n", CPU_ID_GET());
+	pr_err("u-boot still runs on cpu [%ld]\n", CPU_ID_GET());
 
 	/* We will never return after executing our program if master cpu used
 	 * otherwise halt master cpu manually */
@@ -884,5 +886,6 @@ static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 U_BOOT_CMD(
 	hsdk_go, 3, 0, do_hsdk_go,
 	"Synopsys HSDK specific command",
-	"hsdk_go                 - Boot stand-alone application on HSDK\n"
+	"     - Boot stand-alone application on HSDK\n"
+	"hsdk_go halt - Boot stand-alone application on HSDK, halt CPU just before application run\n"
 );
