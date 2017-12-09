@@ -51,26 +51,37 @@ static int cleanup_before_linux(void)
 	return 0;
 }
 
+__weak int board_prep_linux(bootm_headers_t *images) { return 0; }
+
 /* Subcommand: PREP */
 static void boot_prep_linux(bootm_headers_t *images)
 {
 	if (image_setup_linux(images))
 		hang();
+
+	board_prep_linux(images);
 }
 
-__weak int bootm_prepare_and_run(u32 entry) { return 0; }
+__weak void board_jump_and_run(ulong entry, int zero, int arch, uint params)
+{
+	void (*kernel_entry)(int zero, int arch, uint params);
+
+	kernel_entry = (void (*)(int, int, uint))entry;
+
+	kernel_entry(zero, arch, params);
+}
 
 /* Subcommand: GO */
 static void boot_jump_linux(bootm_headers_t *images, int flag)
 {
-	void (*kernel_entry)(int zero, int arch, uint params);
+	ulong kernel_entry;
 	unsigned int r0, r2;
 	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
 
-	kernel_entry = (void (*)(int, int, uint))images->ep;
+	kernel_entry = images->ep;
 
 	debug("## Transferring control to Linux (at address %08lx)...\n",
-	      (ulong) kernel_entry);
+	      kernel_entry);
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
 
 	printf("\nStarting kernel ...%s\n\n", fake ?
@@ -87,13 +98,8 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 		r2 = (unsigned int)env_get("bootargs");
 	}
 
-	if (!fake) {
-		//TODO: split for prepare and run
-		if (bootm_prepare_and_run((u32)kernel_entry))
-			return;
-
-		kernel_entry(r0, 0, r2);
-	}
+	if (!fake)
+		board_jump_and_run(kernel_entry, r0, 0, r2);
 }
 
 int do_bootm_linux(int flag, int argc, char *argv[], bootm_headers_t *images)
