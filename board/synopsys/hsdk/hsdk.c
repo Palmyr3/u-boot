@@ -58,6 +58,22 @@ int board_mmc_init(bd_t *bis)
 	return 0;
 }
 
+int board_early_init_r(void)
+{
+	/* Init USB to be able read environment from USB MSD */
+	usb_init();
+
+	return 0;
+}
+
+int board_late_init(void)
+{
+	/* Populate environment with clock frequency values */
+	run_command("hsdk_clock get", 0);
+
+	return 0;
+}
+
 #define RESET_VECTOR_ADDR	0x0
 
 void smp_set_core_boot_addr(unsigned long addr, int corenr)

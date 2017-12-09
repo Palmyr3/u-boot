@@ -104,4 +104,10 @@
 /* Cli configuration */
 #define CONFIG_SYS_CBSIZE		2048
 
+/*
+ * Callback configuration
+ */
+#define CONFIG_BOARD_EARLY_INIT_R
+#define CONFIG_BOARD_LATE_INIT
+
 #endif /* _CONFIG_HSDK_H_ */
