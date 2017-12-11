@@ -7,6 +7,7 @@
 #include <common.h>
 #include <dwmmc.h>
 #include <malloc.h>
+#include <usb.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
