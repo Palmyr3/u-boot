@@ -26,6 +26,12 @@
 #define OP_FLUSH	0x2
 #define OP_INV_IC	0x3
 
+/* Bit val in SLC_CONTROL */
+#define SLC_CTRL_DIS		0x001
+#define SLC_CTRL_IM		0x040
+#define SLC_CTRL_BUSY		0x100
+#define SLC_CTRL_RGN_OP_INV	0x200
+
 /*
  * By default that variable will fall into .bss section.
  * But .bss section is not relocated and so it will be initilized before
@@ -45,87 +51,85 @@ bool ioc_exists __section(".data") = false;
 /* To force enable IOC set ioc_enable to 'true' */
 bool ioc_enable __section(".data") = false;
 
-static unsigned int __before_slc_op(const int op)
+noinline static void __slc_entire_op(const int op)
 {
-	unsigned int reg = reg;
+	unsigned int ctrl, r = ARC_AUX_SLC_CTRL;
 
-	if (op == OP_INV) {
-		/*
-		 * IM is set by default and implies Flush-n-inv
-		 * Clear it here for vanilla inv
-		 */
-		reg = read_aux_reg(ARC_AUX_SLC_CTRL);
-		write_aux_reg(ARC_AUX_SLC_CTRL, reg & ~DC_CTRL_INV_MODE_FLUSH);
-	}
+	ctrl = read_aux_reg(r);
 
-	return reg;
-}
-
-static void __after_slc_op(const int op, unsigned int reg)
-{
-	if (op & OP_FLUSH) {	/* flush / flush-n-inv both wait */
-		/*
-		 * Make sure "busy" bit reports correct status,
-		 * see STAR 9001165532
-		 */
-		read_aux_reg(ARC_AUX_SLC_CTRL);
-		while (read_aux_reg(ARC_AUX_SLC_CTRL) &
-		       DC_CTRL_FLUSH_STATUS)
-			;
-	}
-
-	/* Switch back to default Invalidate mode */
-	if (op == OP_INV)
-		write_aux_reg(ARC_AUX_SLC_CTRL, reg | DC_CTRL_INV_MODE_FLUSH);
-}
-
-static inline void __slc_line_loop(unsigned long paddr, unsigned long sz,
-				   const int op)
-{
-	unsigned int aux_cmd;
-	int num_lines;
-
-#define SLC_LINE_MASK	(~(slc_line_sz - 1))
-
-	aux_cmd = op & OP_INV ? ARC_AUX_SLC_IVDL : ARC_AUX_SLC_FLDL;
-
-	sz += paddr & ~SLC_LINE_MASK;
-	paddr &= SLC_LINE_MASK;
-
-	num_lines = DIV_ROUND_UP(sz, slc_line_sz);
-
-	while (num_lines-- > 0) {
-		write_aux_reg(aux_cmd, paddr);
-		paddr += slc_line_sz;
-	}
-}
-
-static inline void __slc_entire_op(const int cacheop)
-{
-	int aux;
-	unsigned int ctrl_reg = __before_slc_op(cacheop);
-
-	if (cacheop & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
-		aux = ARC_AUX_SLC_INVALIDATE;
+	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
+		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
 	else
-		aux = ARC_AUX_SLC_FLUSH;
+		ctrl |= SLC_CTRL_IM;
 
-	write_aux_reg(aux, 0x1);
+	write_aux_reg(r, ctrl);
 
-	__after_slc_op(cacheop, ctrl_reg);
+	write_aux_reg(ARC_AUX_SLC_INVALIDATE, 1);
+
+	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
+	read_aux_reg(r);
+
+	/* Important to wait for flush to complete */
+	while (read_aux_reg(r) & SLC_CTRL_BUSY);
 }
 
-static inline void __slc_line_op(unsigned long paddr, unsigned long sz,
-				 const int cacheop)
+static void slc_upper_region_init(void)
 {
-	unsigned int ctrl_reg = __before_slc_op(cacheop);
-	__slc_line_loop(paddr, sz, cacheop);
-	__after_slc_op(cacheop, ctrl_reg);
+	/*
+	 * ARC_AUX_SLC_RGN_END1 and ARC_AUX_SLC_RGN_START1 are always == 0
+	 * as we don't use PAE40.
+	 */
+	write_aux_reg(ARC_AUX_SLC_RGN_END1, 0);
+	write_aux_reg(ARC_AUX_SLC_RGN_START1, 0);
 }
-#else
-#define __slc_entire_op(cacheop)
-#define __slc_line_op(paddr, sz, cacheop)
-#endif
+
+noinline void __slc_rgn_op(unsigned long paddr, unsigned long sz, const int op)
+{
+	unsigned int ctrl;
+	unsigned long end;
+
+	/*
+	 * The Region Flush operation is specified by CTRL.RGN_OP[11..9]
+	 *  - b'000 (default) is Flush,
+	 *  - b'001 is Invalidate if CTRL.IM == 0
+	 *  - b'001 is Flush-n-Invalidate if CTRL.IM == 1
+	 */
+	ctrl = read_aux_reg(ARC_AUX_SLC_CTRL);
+
+	/* Don't rely on default value of IM bit */
+	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
+		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
+	else
+		ctrl |= SLC_CTRL_IM;
+
+	if (op & OP_INV)
+		ctrl |= SLC_CTRL_RGN_OP_INV;	/* Inv or flush-n-inv */
+	else
+		ctrl &= ~SLC_CTRL_RGN_OP_INV;
+
+	write_aux_reg(ARC_AUX_SLC_CTRL, ctrl);
+
+	/*
+	 * Lower bits are ignored, no need to clip
+	 * END needs to be setup before START (latter triggers the operation)
+	 * END can't be same as START, so add (l2_line_sz - 1) to sz
+	 */
+	end = paddr + sz + slc_line_sz - 1;
+
+	/*
+	 * Upper addresses (ARC_AUX_SLC_RGN_END1 and ARC_AUX_SLC_RGN_START1)
+	 * are always == 0 as we don't use PAE40, so we only setup lower ones
+	 * (ARC_AUX_SLC_RGN_END and ARC_AUX_SLC_RGN_START)
+	 */
+	write_aux_reg(ARC_AUX_SLC_RGN_END, end);
+	write_aux_reg(ARC_AUX_SLC_RGN_START, paddr);
+
+	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
+	read_aux_reg(ARC_AUX_SLC_CTRL);
+
+	while (read_aux_reg(ARC_AUX_SLC_CTRL) & SLC_CTRL_BUSY);
+}
+#endif /* CONFIG_ISA_ARCV2 */
 
 #ifdef CONFIG_ISA_ARCV2
 static void read_decode_cache_bcr_arcv2(void)
@@ -247,7 +251,10 @@ void cache_init(void)
 		write_aux_reg(ARC_AUX_IO_COH_ENABLE, 1);
 
 	}
-#endif
+
+	if (slc_exists)
+		slc_upper_region_init();
+#endif /* CONFIG_ISA_ARCV2 */
 }
 
 int icache_status(void)
@@ -275,7 +282,6 @@ void icache_disable(void)
 			      IC_CTRL_CACHE_DISABLE);
 }
 
-#ifndef CONFIG_SYS_DCACHE_OFF
 void invalidate_icache_all(void)
 {
 	/* Any write to IC_IVIC register triggers invalidation of entire I$ */
@@ -283,12 +289,12 @@ void invalidate_icache_all(void)
 		write_aux_reg(ARC_AUX_IC_IVIC, 1);
 		read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
 	}
-}
-#else
-void invalidate_icache_all(void)
-{
-}
+
+#ifdef CONFIG_ISA_ARCV2
+	if (slc_exists)
+		__slc_entire_op(OP_INV);
 #endif
+}
 
 int dcache_status(void)
 {
@@ -415,6 +421,9 @@ static inline void __dc_line_op(unsigned long paddr, unsigned long sz,
 
 void invalidate_dcache_range(unsigned long start, unsigned long end)
 {
+	if (start >= end)
+		return;
+
 #ifdef CONFIG_ISA_ARCV2
 	if (!ioc_exists)
 #endif
@@ -422,12 +431,15 @@ void invalidate_dcache_range(unsigned long start, unsigned long end)
 
 #ifdef CONFIG_ISA_ARCV2
 	if (slc_exists && !ioc_exists)
-		__slc_line_op(start, end - start, OP_INV);
+		__slc_rgn_op(start, end - start, OP_INV);
 #endif
 }
 
 void flush_dcache_range(unsigned long start, unsigned long end)
 {
+	if (start >= end)
+		return;
+
 #ifdef CONFIG_ISA_ARCV2
 	if (!ioc_exists)
 #endif
@@ -435,7 +447,7 @@ void flush_dcache_range(unsigned long start, unsigned long end)
 
 #ifdef CONFIG_ISA_ARCV2
 	if (slc_exists && !ioc_exists)
-		__slc_line_op(start, end - start, OP_FLUSH);
+		__slc_rgn_op(start, end - start, OP_FLUSH);
 #endif
 }
 
