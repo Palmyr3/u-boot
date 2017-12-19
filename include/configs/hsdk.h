@@ -110,4 +110,7 @@
 #define CONFIG_BOARD_EARLY_INIT_R
 #define CONFIG_BOARD_LATE_INIT
 
+
+#define CONFIG_PANIC_HANG
+
 #endif /* _CONFIG_HSDK_H_ */
