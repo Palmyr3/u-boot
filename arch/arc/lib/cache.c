@@ -53,24 +53,27 @@ bool ioc_enable __section(".data") = false;
 
 noinline static void __slc_entire_op(const int op)
 {
-	unsigned int ctrl, r = ARC_AUX_SLC_CTRL;
+	unsigned int ctrl;
 
-	ctrl = read_aux_reg(r);
+	ctrl = read_aux_reg(ARC_AUX_SLC_CTRL);
 
 	if (!(op & OP_FLUSH))		/* i.e. OP_INV */
 		ctrl &= ~SLC_CTRL_IM;	/* clear IM: Disable flush before Inv */
 	else
 		ctrl |= SLC_CTRL_IM;
 
-	write_aux_reg(r, ctrl);
+	write_aux_reg(ARC_AUX_SLC_CTRL, ctrl);
 
-	write_aux_reg(ARC_AUX_SLC_INVALIDATE, 1);
+	if (op & OP_INV)	/* Inv or flush-n-inv use same cmd reg */
+		write_aux_reg(ARC_AUX_SLC_INVALIDATE, 0x1);
+	else
+		write_aux_reg(ARC_AUX_SLC_FLUSH, 0x1);
 
 	/* Make sure "busy" bit reports correct stataus, see STAR 9001165532 */
-	read_aux_reg(r);
+	read_aux_reg(ARC_AUX_SLC_CTRL);
 
 	/* Important to wait for flush to complete */
-	while (read_aux_reg(r) & SLC_CTRL_BUSY);
+	while (read_aux_reg(ARC_AUX_SLC_CTRL) & SLC_CTRL_BUSY);
 }
 
 static void slc_upper_region_init(void)
