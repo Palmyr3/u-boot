@@ -285,13 +285,18 @@ void icache_disable(void)
 			      IC_CTRL_CACHE_DISABLE);
 }
 
+/* IC supports only invalidation */
+static inline void __ic_entire_op(void)
+{
+	write_aux_reg(ARC_AUX_IC_IVIC, 1);
+	read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
+}
+
 void invalidate_icache_all(void)
 {
 	/* Any write to IC_IVIC register triggers invalidation of entire I$ */
-	if (icache_status()) {
-		write_aux_reg(ARC_AUX_IC_IVIC, 1);
-		read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
-	}
+	if (icache_status())
+		__ic_entire_op();
 
 #ifdef CONFIG_ISA_ARCV2
 	if (slc_exists)
@@ -477,4 +482,19 @@ void flush_dcache_all(void)
 	if (slc_exists)
 		__slc_entire_op(OP_FLUSH);
 #endif
+}
+
+void __l1_dc_flush_all(void)
+{
+	__dc_entire_op(OP_FLUSH);
+}
+
+void __l1_dc_invalidate_all(void)
+{
+	__dc_entire_op(OP_INV);
+}
+
+void __l1_ic_invalidate_all(void)
+{
+	__ic_entire_op();
 }
