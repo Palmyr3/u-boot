@@ -60,6 +60,10 @@
  * Environment settings
  */
 #define CONFIG_ENV_SIZE			SZ_16K
+/* Last 64K block is for env */
+#define CONFIG_ENV_OFFSET		(SZ_64K * 16)
+/* 64K block */
+#define CONFIG_ENV_SECT_SIZE		SZ_64K
 
 #define CONFIG_EXTRA_ENV_SETTINGS \
 	"core_dccm_0=0x10\0" \
