@@ -62,7 +62,7 @@ int board_mmc_init(bd_t *bis)
 int board_early_init_r(void)
 {
 	/* Init USB to be able read environment from USB MSD */
-	usb_init();
+	/* usb_init(); */ /* Temporary disable init as it break usb in linux */
 
 	return 0;
 }
