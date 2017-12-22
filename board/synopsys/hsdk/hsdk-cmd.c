@@ -8,6 +8,7 @@
 #include <linux/kernel.h>
 #include <linux/io.h>
 #include <asm/arcregs.h>
+#include <fdt_support.h>
 
 
 #ifdef CONFIG_CPU_BIG_ENDIAN
@@ -20,6 +21,7 @@
 
 /* TODO: move to common config */
 #define NR_CPUS		4
+#define ALL_CPU_MASK	0xF	/* GENMASK(NR_CPUS, 0) */
 #define MASTER_CPU	0
 #define MAX_CMD_LEN	25
 #define HZ_IN_MHZ	1000000
@@ -936,7 +938,9 @@ static int hsdk_go_run(u32 cpu_start_reg)
 
 int board_prep_linux(bootm_headers_t *images)
 {
+	u32 i;
 	int ret;
+	char dt_cpu_path[30];
 
 	ret = env_read_validate_common(env_map_mask);
 	if (ret)
@@ -944,11 +948,31 @@ int board_prep_linux(bootm_headers_t *images)
 
 	/* Rollback to default values */
 	if (!env_common.core_mask.set) {
-		env_common.core_mask.val = 0xF;
+		env_common.core_mask.val = ALL_CPU_MASK;
 		env_common.core_mask.set = true;
 	}
 
 	printf("CPU start mask is %#x\n", env_common.core_mask.val);
+
+	if (!is_cpu_used(MASTER_CPU))
+		pr_err("ERR: try to launch linux with CPU[0] disabled! It doesn't work for ARC.\n");
+
+	if (!IMAGE_ENABLE_OF_LIBFDT || !images->ft_len) {
+		if (env_common.core_mask.val != ALL_CPU_MASK) {
+			pr_err("WARN: core_mask setup will work properly only with external DTB!\n");
+
+			return 0;
+		}
+	}
+
+	for (i = 0; i < NR_CPUS; i++) {
+		if (!is_cpu_used(i)) {
+			sprintf(dt_cpu_path, "/cpus/cpu@%u", i);
+			ret = fdt_status_disabled_by_alias(images->ft_addr, dt_cpu_path);
+			debug("patched '%s' node status: ret=%d%s\n", dt_cpu_path,
+			      ret, ret == 0 ? "(OK)" : "");
+		}
+	}
 
 	return 0;
 }
