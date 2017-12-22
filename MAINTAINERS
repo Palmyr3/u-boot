@@ -63,7 +63,7 @@ ARC HSDK PLL CLK
 M:	Eugeniy Paltsev <Eugeniy.Paltsev@synopsys.com>
 S:	Maintained
 L:	uboot-snps-arc@synopsys.com
-F:	drivers/clk/hsdk-clk.c
+F:	drivers/clk/clk-hsdk-cgu.c
 
 ARM
 M:	Albert Aribaud <albert.u.boot@aribaud.net>
