@@ -30,13 +30,15 @@
 			 <&cgu_clk 4>, <&cgu_clk 5>, <&cgu_clk 6>, <&cgu_clk 7>,
 			 <&cgu_clk 8>, <&cgu_clk 9>, <&cgu_clk 10>, <&cgu_clk 11>,
 			 <&cgu_clk 12>, <&cgu_clk 13>, <&cgu_clk 14>, <&cgu_clk 15>,
-			 <&cgu_clk 16>, <&cgu_clk 17>, <&cgu_clk 18>, <&cgu_clk 19>;
+			 <&cgu_clk 16>, <&cgu_clk 17>, <&cgu_clk 18>, <&cgu_clk 19>,
+			 <&cgu_clk 24>, <&cgu_clk 25>;
 		clock-names = "cpu-pll", "sys-pll", "tun-pll", "ddr-clk",
 			      "cpu-clk", "hdmi-pll", "tun-clk", "hdmi-clk",
 			      "sys-apb", "sys-axi", "sys-eth", "sys-usb",
 			      "sys-sdio", "sys-hdmi", "sys-gfx-core", "sys-gfx-dma",
 			      "sys-gfx-cfg", "sys-dmac-core", "sys-dmac-cfg", "sys-sdio-ref",
-			      "sys-spi", "sys-i2c", "sys-uart", "sys-ebi";
+			      "sys-spi", "sys-i2c", "sys-uart", "sys-ebi",
+			      "rom-clk", "pwm-clk";
 	};
 
 	cgu_clk: cgu-clk@f0000000 {
