@@ -373,17 +373,17 @@ static int env_read_validate_core(const struct hsdk_env_map_core *map)
 	int ret;
 
 	/* Cleanup env struct first */
-	for (i = 0; env_map_core[i].env_name; i++) {
+	for (i = 0; map[i].env_name; i++) {
 		env_clear_core(i, map);
 	}
 
-	for (i = 0; env_map_core[i].env_name; i++) {
+	for (i = 0; map[i].env_name; i++) {
 		ret = env_read_core(i, map);
 		if (ret)
 			return ret;
 	}
 
-	for (i = 0; env_map_core[i].env_name; i++) {
+	for (i = 0; map[i].env_name; i++) {
 		ret = env_validate_core(i, map);
 		if (ret)
 			return ret;
