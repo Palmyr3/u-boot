@@ -50,7 +50,6 @@ typedef struct {
 } u32_env;
 
 struct hsdk_env_core_ctl {
-	bool used[NR_CPUS];
 	u32_env entry[NR_CPUS];
 	u32_env iccm[NR_CPUS];
 	u32_env dccm[NR_CPUS];
@@ -891,10 +890,6 @@ static int prepare_cpus(void)
 	if (ret)
 		return ret;
 
-	for (i = 0; i < NR_CPUS; i++) {
-		env_core.used[i] = is_cpu_used(i);
-	}
-
 	printf("CPU start mask is %#x\n", env_common.core_mask.val);
 
 	do_init_slave_cpus();
@@ -921,7 +916,7 @@ static int hsdk_go_run(u32 cpu_start_reg)
 	/* Kick chosen slave CPUs */
 	writel(cpu_start_reg, (void __iomem *)CREG_CPU_START);
 
-	if (env_core.used[MASTER_CPU])
+	if (is_cpu_used(MASTER_CPU))
 		((void (*)(void))(env_core.entry[MASTER_CPU].val))();
 	else
 		halt_this_cpu();
