@@ -508,9 +508,9 @@ static void init_claster_nvlim(void)
 
 static void init_master_icache(void)
 {
+#ifdef CONFIG_SYS_ICACHE_OFF
 	unsigned int r;
 
-#ifdef CONFIG_SYS_ICACHE_OFF
 	/* enable if required, else - nothing to do */
 	if (env_common.icache.val) {
 		r = ARC_AUX_IC_CTRL;
@@ -536,9 +536,9 @@ static void init_master_icache(void)
 
 static void init_master_dcache(void)
 {
+#ifdef CONFIG_SYS_ICACHE_OFF
 	unsigned int r;
 
-#ifdef CONFIG_SYS_ICACHE_OFF
 	/* enable if required, else - nothing to do */
 	if (env_common.dcache.val) {
 		r = ARC_AUX_DC_CTRL;
@@ -887,7 +887,6 @@ static int check_master_cpu_id(void)
 
 static int prepare_cpus(void)
 {
-	u32 i;
 	int ret;
 
 	ret = check_master_cpu_id();
