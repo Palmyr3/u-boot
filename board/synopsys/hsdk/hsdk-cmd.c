@@ -260,8 +260,12 @@ static int env_validate_common(u32 index, const struct hsdk_env_map_common *map)
 
 	/* Check environment boundary */
 	if (set && (value < min || value > max)) {
-		pr_err("Variable \'%s\' must be between %#x and %#x\n",
-			map[index].env_name, min, max);
+		if (map[index].type == ENV_HEX)
+			pr_err("Variable \'%s\' must be between %#x and %#x\n",
+				map[index].env_name, min, max);
+		else
+			pr_err("Variable \'%s\' must be between %u and %u\n",
+				map[index].env_name, min, max);
 
 		return -EINVAL;
 	}
@@ -294,8 +298,12 @@ static int env_validate_core(u32 index, const struct hsdk_env_map_core *map)
 
 		/* Check environment boundary */
 		if (set && (value < min || value > max)) {
-			pr_err("Variable \'%s_%u\' must be between %#x and %#x\n",
-				map[index].env_name, i, min, max);
+			if (map[index].type == ENV_HEX)
+				pr_err("Variable \'%s_%u\' must be between %#x and %#x\n",
+					map[index].env_name, i, min, max);
+			else
+				pr_err("Variable \'%s_%u\' must be between %d and %d\n",
+					map[index].env_name, i, min, max);
 
 			return -EINVAL;
 		}
