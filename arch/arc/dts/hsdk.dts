@@ -35,10 +35,10 @@
 			 <&cgu_clk 24>, <&cgu_clk 25>;
 		clock-names = "cpu-pll", "sys-pll", "tun-pll", "ddr-clk",
 			      "cpu-clk", "hdmi-pll", "tun-clk", "hdmi-clk",
-			      "sys-apb", "sys-axi", "sys-eth", "sys-usb",
-			      "sys-sdio", "sys-hdmi", "sys-gfx-core", "sys-gfx-dma",
-			      "sys-gfx-cfg", "sys-dmac-core", "sys-dmac-cfg", "sys-sdio-ref",
-			      "sys-spi", "sys-i2c", "sys-uart", "sys-ebi",
+			      "apb-clk", "axi-clk", "eth-clk", "usb-clk",
+			      "sdio-clk", "hdmi-sys-clk", "gfx-core-clk", "gfx-dma-clk",
+			      "gfx-cfg-clk", "dmac-core-clk", "dmac-cfg-clk", "sdio-ref-clk",
+			      "spi-clk", "i2c-clk", "uart-clk", "ebi-clk",
 			      "rom-clk", "pwm-clk";
 	};
 

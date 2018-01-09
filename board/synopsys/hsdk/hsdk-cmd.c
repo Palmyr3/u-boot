@@ -852,7 +852,7 @@ static void setup_clocks(void)
 
 	if (env_common.axi_freq.set) {
 		rate = env_common.axi_freq.val * HZ_IN_MHZ;
-		soc_clk_ctl("sys-axi", &rate, CLK_SET | CLK_ON);
+		soc_clk_ctl("axi-clk", &rate, CLK_SET | CLK_ON);
 	}
 }
 
@@ -1208,7 +1208,7 @@ static int do_hsdk_clock_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const 
 	if (ret)
 		return CMD_RET_FAILURE;
 
-	ret = soc_clk_ctl("sys-axi", &rate, CLK_GET);
+	ret = soc_clk_ctl("axi-clk", &rate, CLK_GET);
 	if (ret)
 		return CMD_RET_FAILURE;
 
@@ -1226,7 +1226,7 @@ static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc, char * cons
 	/* Main clocks */
 	soc_clk_ctl("cpu-clk", NULL, CLK_PRINT);
 	soc_clk_ctl("tun-clk", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
+	soc_clk_ctl("axi-clk", NULL, CLK_PRINT);
 	soc_clk_ctl("ddr-clk", NULL, CLK_PRINT);
 
 	return CMD_RET_SUCCESS;
@@ -1241,22 +1241,22 @@ static int do_hsdk_clock_print_all(cmd_tbl_t *cmdtp, int flag, int argc, char * 
 
 	/* SYS clock domain */
 	soc_clk_ctl("sys-pll", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-apb", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-axi", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-eth", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-usb", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-sdio", NULL, CLK_PRINT);
-/*	soc_clk_ctl("sys-hdmi", NULL, CLK_PRINT); */
-	soc_clk_ctl("sys-gfx-core", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-gfx-dma", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-gfx-cfg", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-dmac-core", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-dmac-cfg", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-sdio-ref", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-spi", NULL, CLK_PRINT);
-	soc_clk_ctl("sys-i2c", NULL, CLK_PRINT);
-/*	soc_clk_ctl("sys-ebi", NULL, CLK_PRINT); */
-	soc_clk_ctl("sys-uart", NULL, CLK_PRINT);
+	soc_clk_ctl("apb-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("axi-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("eth-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("usb-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("sdio-clk", NULL, CLK_PRINT);
+/*	soc_clk_ctl("hdmi-sys-clk", NULL, CLK_PRINT); */
+	soc_clk_ctl("gfx-core-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("gfx-dma-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("gfx-cfg-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("dmac-core-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("dmac-cfg-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("sdio-ref-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("spi-clk", NULL, CLK_PRINT);
+	soc_clk_ctl("i2c-clk", NULL, CLK_PRINT);
+/*	soc_clk_ctl("ebi-clk", NULL, CLK_PRINT); */
+	soc_clk_ctl("uart-clk", NULL, CLK_PRINT);
 	printf("\n");
 
 	/* DDR clock domain */
