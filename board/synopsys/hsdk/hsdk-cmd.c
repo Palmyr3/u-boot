@@ -1070,7 +1070,7 @@ static int do_hsdk_init(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[
 
 	/* hsdk_init can be run only once */
 	if (done) {
-		printf("HSDK HW is already initialized!\n");
+		printf("HSDK HW is already initialized! Please reset the board if you want to change the configuration.\n");
 		return CMD_RET_FAILURE;
 	}
 
