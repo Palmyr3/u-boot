@@ -15,7 +15,7 @@
 	#error "hsdk_go will not work with BIG endian CPU"
 #endif
 
-#define HSDKGO_VERSION	"0.8"
+#define HSDKGO_VERSION	"0.9"
 
 #define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
 
