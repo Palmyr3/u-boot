@@ -16,6 +16,9 @@ DECLARE_GLOBAL_DATA_PTR;
 #define	CREG_PAE_UPDATE	(CREG_BASE + 0x194)
 #define	CREG_CPU_START	(CREG_BASE + 0x400)
 
+/* TODO: move AXI apertures setup code here from hsdk-cmd.c */
+void init_memory_bridge(void);
+
 int board_early_init_f(void)
 {
 	/* In current chip PAE support for DMA is broken, disabling it. */
@@ -23,6 +26,10 @@ int board_early_init_f(void)
 
 	/* Really apply settings made above */
 	writel(1, (void __iomem *) CREG_PAE_UPDATE);
+
+	/* Setup AXI apertures unconditionally as we want to have DDR
+	 * in 0x00000000 region when we are kicking slave cpus */
+	init_memory_bridge();
 
 	return 0;
 }
