@@ -1003,7 +1003,9 @@ static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	int ret;
 
 	/* TODO: delete after release */
+#ifdef PRINT_HSDK_CMD_VERSION
 	printf("HSDK: hsdk_go version: %s\n", HSDKGO_VERSION);
+#endif
 
 	/* Check for 'halt' parameter. 'halt' = enter halt-mode just before
 	 * starting the application; can be used for debug */
@@ -1041,7 +1043,9 @@ static int do_hsdk_init(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[
 	int ret;
 
 	/* TODO: delete after release */
+#ifdef PRINT_HSDK_CMD_VERSION
 	printf("HSDK: hsdk_init version: %s\n", HSDKGO_VERSION);
+#endif
 
 	/* hsdk_init can be run only once */
 	if (done) {
