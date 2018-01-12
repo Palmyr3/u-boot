@@ -758,11 +758,21 @@ enum hsdk_axi_masters {
 #define CREG_AXI_M_OFT1(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m) + 0x00C))
 #define CREG_AXI_M_UPDT(m)  ((void __iomem *)(CREG_BASE + 0x020 * (m) + 0x014))
 
+#define CREG_AXI_M_HS_CORE_BOOT	((void __iomem *)(CREG_BASE + 0x010))
+
 #define CREG_PAE	((void __iomem *)(CREG_BASE + 0x180))
 #define CREG_PAE_UPDT	((void __iomem *)(CREG_BASE + 0x194))
 
-static void init_memory_bridge(void)
+void init_memory_bridge(void)
 {
+	u32 reg;
+
+	/*
+	 * M_HS_CORE has one unic register - BOOT.
+	 * We need to clean boot mirror (BOOT[1:0]) bits in them.
+	 */
+	reg = readl(CREG_AXI_M_HS_CORE_BOOT) & (~0xFF);
+	writel(reg, CREG_AXI_M_HS_CORE_BOOT);
 	writel(0x11111111, CREG_AXI_M_SLV0(M_HS_CORE));
 	writel(0x63111111, CREG_AXI_M_SLV1(M_HS_CORE));
 	writel(0xFEDCBA98, CREG_AXI_M_OFT0(M_HS_CORE));
