@@ -417,6 +417,9 @@ static int env_process_and_validate(const struct hsdk_env_map_common *common,
 }
 
 /* TODO: move to explicit external cache header */
+void __l1_ic_invalidate_all(void);
+void __l1_dc_invalidate_all(void);
+void __l1_dc_flush_all(void);
 
 /* Bit values in IC_CTRL */
 #define IC_CTRL_CACHE_DISABLE	(1 << 0)
@@ -425,40 +428,6 @@ static int env_process_and_validate(const struct hsdk_env_map_common *common,
 #define DC_CTRL_INV_MODE_FLUSH	(1 << 6)
 #define DC_CTRL_FLUSH_STATUS	(1 << 8)
 #define APT_SHIFT		28
-
-/* ********************* LOCAL CACHE: START ********************* */
-static void smp_local_invalidate_icache_l1_all(void)
-{
-	write_aux_reg(ARC_AUX_IC_IVIC, 1);
-	read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
-}
-
-static void smp_local_invalidate_dcache_l1_all(void)
-{
-	unsigned int reg;
-
-	/*
-	 * IM is set by default and implies Flush-n-inv
-	 * Clear it here for vanilla inv
-	 */
-	reg = read_aux_reg(ARC_AUX_DC_CTRL);
-	write_aux_reg(ARC_AUX_DC_CTRL, reg & ~DC_CTRL_INV_MODE_FLUSH);
-
-	write_aux_reg(ARC_AUX_DC_IVDC, 0x1);
-
-	/* Switch back to default Invalidate mode */
-	write_aux_reg(ARC_AUX_DC_CTRL, reg | DC_CTRL_INV_MODE_FLUSH);
-}
-
-static void smp_local_flush_dcache_l1_all(void)
-{
-	write_aux_reg(ARC_AUX_DC_FLSH, 0x1);
-
-	/* flush / flush-n-inv both wait */
-	while (read_aux_reg(ARC_AUX_DC_CTRL) & DC_CTRL_FLUSH_STATUS);
-}
-
-/* ********************* LOCAL CACHE: END   ********************* */
 
 // TODO: add xCCM runtime check
 static void smp_init_slave_cpu_func(u32 core)
@@ -648,9 +617,6 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 	__l1_ic_invalidate_all();
 	__l1_dc_invalidate_all();
 
-//	smp_local_invalidate_icache_l1_all();
-//	smp_local_invalidate_dcache_l1_all();
-
 	/* Run our program */
 	((void (*)(void))(env_core.entry[CPU_ID_GET()].val))();
 
@@ -691,7 +657,7 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 		/* we need L1d$ invalidation here, if we use slave CPUs with
 		 * disabled L1d$, as we configure master CPU caches later.
 		 * (master CPU L1d$ is possibly enabled here) */
-		__l1_dc_invalidate_all(0x1);
+		__l1_dc_invalidate_all();
 	}
 
 	/* We need to panic here as there is no option to halt slave cpu
