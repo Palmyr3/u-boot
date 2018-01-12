@@ -737,7 +737,7 @@ void init_memory_bridge(void)
 	 * M_HS_CORE has one unic register - BOOT.
 	 * We need to clean boot mirror (BOOT[1:0]) bits in them.
 	 */
-	reg = readl(CREG_AXI_M_HS_CORE_BOOT) & (~0xFF);
+	reg = readl(CREG_AXI_M_HS_CORE_BOOT) & (~0x3);
 	writel(reg, CREG_AXI_M_HS_CORE_BOOT);
 	writel(0x11111111, CREG_AXI_M_SLV0(M_HS_CORE));
 	writel(0x63111111, CREG_AXI_M_SLV1(M_HS_CORE));
