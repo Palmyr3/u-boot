@@ -13,14 +13,13 @@
 #include <asm/cache.h>
 
 /* Bit values in IC_CTRL */
-#define IC_CTRL_CACHE_DISABLE	(1 << 0)
+#define IC_CTRL_CACHE_DISABLE	BIT(0)
 
 /* Bit values in DC_CTRL */
-#define DC_CTRL_CACHE_DISABLE	(1 << 0)
-#define DC_CTRL_INV_MODE_FLUSH	(1 << 6)
-#define DC_CTRL_FLUSH_STATUS	(1 << 8)
+#define DC_CTRL_CACHE_DISABLE	BIT(0)
+#define DC_CTRL_INV_MODE_FLUSH	BIT(6)
+#define DC_CTRL_FLUSH_STATUS	BIT(8)
 #define CACHE_VER_NUM_MASK	0xF
-#define SLC_CTRL_SB		(1 << 2)
 
 #define OP_INV		0x1
 #define OP_FLUSH	0x2
@@ -47,11 +46,37 @@ bool icache_exists __section(".data") = false;
 int slc_line_sz __section(".data");
 bool slc_exists __section(".data") = false;
 bool ioc_exists __section(".data") = false;
+bool pae_exists __section(".data") = false;
 
 /* To force enable IOC set ioc_enable to 'true' */
 bool ioc_enable __section(".data") = false;
 
-noinline static void __slc_entire_op(const int op)
+void read_decode_mmu_bcr(void)
+{
+	/* TODO: should we compare mmu version from BCR and from CONFIG? */
+#if (CONFIG_ARC_MMU_VER >= 4)
+	u32 tmp;
+
+	tmp = read_aux_reg(ARC_AUX_MMU_BCR);
+
+	struct bcr_mmu_4 {
+#ifdef CONFIG_CPU_BIG_ENDIAN
+	unsigned int ver:8, sasid:1, sz1:4, sz0:4, res:2, pae:1,
+		     n_ways:2, n_entry:2, n_super:2, u_itlb:3, u_dtlb:3;
+#else
+	/*           DTLB      ITLB      JES        JE         JA      */
+	unsigned int u_dtlb:3, u_itlb:3, n_super:2, n_entry:2, n_ways:2,
+		     pae:1, res:2, sz0:4, sz1:4, sasid:1, ver:8;
+#endif /* CONFIG_CPU_BIG_ENDIAN */
+	} *mmu4;
+
+	mmu4 = (struct bcr_mmu_4 *)&tmp;
+
+	pae_exists = !!mmu4->pae;
+#endif /* (CONFIG_ARC_MMU_VER >= 4) */
+}
+
+static void __slc_entire_op(const int op)
 {
 	unsigned int ctrl;
 
@@ -86,7 +111,7 @@ static void slc_upper_region_init(void)
 	write_aux_reg(ARC_AUX_SLC_RGN_START1, 0);
 }
 
-noinline void __slc_rgn_op(unsigned long paddr, unsigned long sz, const int op)
+static void __slc_rgn_op(unsigned long paddr, unsigned long sz, const int op)
 {
 	unsigned int ctrl;
 	unsigned long end;
@@ -207,7 +232,7 @@ void read_decode_cache_bcr(void)
 	}
 
 	dbcr.word = read_aux_reg(ARC_BCR_DC_BUILD);
-	if (dbcr.fields.ver){
+	if (dbcr.fields.ver) {
 		dcache_exists = true;
 		l1_line_sz = dc_line_sz = 16 << dbcr.fields.line_len;
 		if (!dc_line_sz)
@@ -242,8 +267,7 @@ void cache_init(void)
 		 * so setting 0x11 implies 512M, 0x12 implies 1G...
 		 */
 		write_aux_reg(ARC_AUX_IO_COH_AP0_SIZE,
-			      order_base_2(ap_size/1024) - 2);
-
+			      order_base_2(ap_size / 1024) - 2);
 
 		/* IOC Aperture start must be aligned to the size of the aperture */
 		if (ap_base % ap_size != 0)
@@ -252,10 +276,16 @@ void cache_init(void)
 		write_aux_reg(ARC_AUX_IO_COH_AP0_BASE, ap_base >> 12);
 		write_aux_reg(ARC_AUX_IO_COH_PARTIAL, 1);
 		write_aux_reg(ARC_AUX_IO_COH_ENABLE, 1);
-
 	}
 
-	if (slc_exists)
+	read_decode_mmu_bcr();
+
+	/*
+	 * ARC_AUX_SLC_RGN_START1 and ARC_AUX_SLC_RGN_END1 register exist
+	 * only if PAE exists in current HW. So we had to check pae_exist
+	 * before using them.
+	 */
+	if (slc_exists && pae_exists)
 		slc_upper_region_init();
 #endif /* CONFIG_ISA_ARCV2 */
 }
@@ -285,18 +315,20 @@ void icache_disable(void)
 			      IC_CTRL_CACHE_DISABLE);
 }
 
-/* IC supports only invalidation */
-static inline void __ic_entire_op(void)
-{
-	write_aux_reg(ARC_AUX_IC_IVIC, 1);
-	read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
-}
-
 void invalidate_icache_all(void)
 {
 	/* Any write to IC_IVIC register triggers invalidation of entire I$ */
-	if (icache_status())
-		__ic_entire_op();
+	if (icache_status()) {
+		write_aux_reg(ARC_AUX_IC_IVIC, 1);
+		/*
+		 * As per ARC HS databook (see chapter 5.3.3.2)
+		 * it is required to add 3 NOPs after each write to IC_IVIC.
+		 */
+		__builtin_arc_nop();
+		__builtin_arc_nop();
+		__builtin_arc_nop();
+		read_aux_reg(ARC_AUX_IC_CTRL);	/* blocks */
+	}
 
 #ifdef CONFIG_ISA_ARCV2
 	if (slc_exists)
@@ -392,8 +424,7 @@ static unsigned int __before_dc_op(const int op)
 static void __after_dc_op(const int op, unsigned int reg)
 {
 	if (op & OP_FLUSH)	/* flush / flush-n-inv both wait */
-		while (read_aux_reg(ARC_AUX_DC_CTRL) & DC_CTRL_FLUSH_STATUS)
-			;
+		while (read_aux_reg(ARC_AUX_DC_CTRL) & DC_CTRL_FLUSH_STATUS);
 
 	/* Switch back to default Invalidate mode */
 	if (op == OP_INV)
@@ -419,6 +450,7 @@ static inline void __dc_line_op(unsigned long paddr, unsigned long sz,
 				const int cacheop)
 {
 	unsigned int ctrl_reg = __before_dc_op(cacheop);
+
 	__cache_line_loop(paddr, sz, cacheop);
 	__after_dc_op(cacheop, ctrl_reg);
 }
@@ -482,19 +514,4 @@ void flush_dcache_all(void)
 	if (slc_exists)
 		__slc_entire_op(OP_FLUSH);
 #endif
-}
-
-void __l1_dc_flush_all(void)
-{
-	__dc_entire_op(OP_FLUSH);
-}
-
-void __l1_dc_invalidate_all(void)
-{
-	__dc_entire_op(OP_INV);
-}
-
-void __l1_ic_invalidate_all(void)
-{
-	__ic_entire_op();
 }

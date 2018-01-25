@@ -69,6 +69,9 @@
 #define ARC_AUX_SLC_RGN_END1	0x917
 #define ARC_BCR_CLUSTER		0xcf
 
+/* MMU Management regs */
+#define ARC_AUX_MMU_BCR		0x06f
+
 /* IO coherency related auxiliary registers */
 #define ARC_AUX_IO_COH_ENABLE	0x500
 #define ARC_AUX_IO_COH_PARTIAL	0x501
