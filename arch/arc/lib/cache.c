@@ -256,8 +256,7 @@ void cache_init(void)
 		/* IOC Aperture size is equal to DDR size */
 		long ap_size = CONFIG_SYS_SDRAM_SIZE;
 
-		flush_dcache_all();
-		invalidate_dcache_all();
+		flush_n_invalidate_dcache_all();
 
 		if (!is_power_of_2(ap_size) || ap_size < 4096)
 			panic("IOC Aperture size must be power of 2 and bigger 4Kib");
@@ -483,13 +482,19 @@ void flush_cache(unsigned long start, unsigned long size)
 	flush_dcache_range(start, start + size);
 }
 
-void invalidate_dcache_all(void)
+/*
+ * As invalidate_dcache_all() is not used in generic U-Boot code and as we
+ * don't need it in arch/arc code alone (invalidate without flush) we implement
+ * flush_n_invalidate_dcache_all (flush and invalidate in 1 operation) because
+ * it's much safer.
+ */
+void flush_n_invalidate_dcache_all(void)
 {
-	__dc_entire_op(OP_INV);
+	__dc_entire_op(OP_FLUSH_N_INV);
 
 #ifdef CONFIG_ISA_ARCV2
 	if (slc_exists)
-		__slc_entire_op(OP_INV);
+		__slc_entire_op(OP_FLUSH_N_INV);
 #endif
 }
 
