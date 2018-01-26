@@ -466,7 +466,7 @@ static void init_claster_nvlim(void)
 	flush_dcache_all();
 	write_aux_reg(ARC_AUX_NON_VOLATILE_LIMIT, val);
 	write_aux_reg(AUX_AUX_CACHE_LIMIT, val);
-	invalidate_dcache_all();
+	flush_n_invalidate_dcache_all();
 }
 
 // TODO: !! add my own implementation of flush_dcache_all, invalidate_icache_all
@@ -532,8 +532,7 @@ static void init_master_dcache(void)
 
 static int cleanup_cache_before_go(void)
 {
-	flush_dcache_all();
-	invalidate_dcache_all();
+	flush_n_invalidate_dcache_all();
 	invalidate_icache_all();
 
 	return 0;
