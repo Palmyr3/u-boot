@@ -43,7 +43,6 @@ bool icache_exists __section(".data") = false;
 
 #define CACHE_LINE_MASK		(~(l1_line_sz - 1))
 
-#ifdef CONFIG_ISA_ARCV2
 int slc_line_sz __section(".data");
 bool slc_exists __section(".data") = false;
 bool ioc_exists __section(".data") = false;
@@ -173,9 +172,7 @@ static void arc_ioc_setup(void)
 	write_aux_reg(ARC_AUX_IO_COH_PARTIAL, 1);
 	write_aux_reg(ARC_AUX_IO_COH_ENABLE, 1);
 }
-#endif /* CONFIG_ISA_ARCV2 */
 
-#ifdef CONFIG_ISA_ARCV2
 static void read_decode_cache_bcr_arcv2(void)
 {
 	union bcr_slc_cfg slc_cfg;
@@ -193,7 +190,6 @@ static void read_decode_cache_bcr_arcv2(void)
 	if (cbcr.fields.c && ioc_enable)
 		ioc_exists = true;
 }
-#endif
 
 void read_decode_cache_bcr(void)
 {
@@ -224,10 +220,10 @@ void cache_init(void)
 {
 	read_decode_cache_bcr();
 
-#ifdef CONFIG_ISA_ARCV2
-	read_decode_cache_bcr_arcv2();
+	if (is_isa_arcv2())
+		read_decode_cache_bcr_arcv2();
 
-	if (ioc_exists)
+	if (is_isa_arcv2() && ioc_exists)
 		arc_ioc_setup();
 
 	read_decode_mmu_bcr();
@@ -237,9 +233,8 @@ void cache_init(void)
 	 * only if PAE exists in current HW. So we had to check pae_exist
 	 * before using them.
 	 */
-	if (slc_exists && pae_exists)
+	if (is_isa_arcv2() && slc_exists && pae_exists)
 		slc_upper_region_init();
-#endif /* CONFIG_ISA_ARCV2 */
 }
 
 int icache_status(void)
@@ -289,10 +284,8 @@ void invalidate_icache_all(void)
 {
 	__ic_entire_invalidate();
 
-#ifdef CONFIG_ISA_ARCV2
-	if (slc_exists)
+	if (is_isa_arcv2() && slc_exists)
 		__slc_entire_op(OP_INV);
-#endif
 }
 
 int dcache_status(void)
@@ -404,15 +397,16 @@ void invalidate_dcache_range(unsigned long start, unsigned long end)
 	if (start >= end)
 		return;
 
-#ifdef CONFIG_ISA_ARCV2
-	if (!ioc_exists)
-#endif
+	/*
+	 * ARCv1                  -> call __dc_line_op
+	 * ARCv2 && no IOC        -> call __dc_line_op; call __slc_rgn_op
+	 * ARCv2 && IOC enabled   -> nothing
+	 */
+	if (!is_isa_arcv2() || !ioc_exists)
 		__dc_line_op(start, end - start, OP_INV);
 
-#ifdef CONFIG_ISA_ARCV2
-	if (slc_exists && !ioc_exists)
+	if (is_isa_arcv2() && slc_exists && !ioc_exists)
 		__slc_rgn_op(start, end - start, OP_INV);
-#endif
 }
 
 void flush_dcache_range(unsigned long start, unsigned long end)
@@ -420,15 +414,16 @@ void flush_dcache_range(unsigned long start, unsigned long end)
 	if (start >= end)
 		return;
 
-#ifdef CONFIG_ISA_ARCV2
-	if (!ioc_exists)
-#endif
+	/*
+	 * ARCv1                  -> call __dc_line_op
+	 * ARCv2 && no IOC        -> call __dc_line_op; call __slc_rgn_op
+	 * ARCv2 && IOC enabled   -> nothing
+	 */
+	if (!is_isa_arcv2() || !ioc_exists)
 		__dc_line_op(start, end - start, OP_FLUSH);
 
-#ifdef CONFIG_ISA_ARCV2
-	if (slc_exists && !ioc_exists)
+	if (is_isa_arcv2() && slc_exists && !ioc_exists)
 		__slc_rgn_op(start, end - start, OP_FLUSH);
-#endif
 }
 
 void flush_cache(unsigned long start, unsigned long size)
@@ -446,18 +441,14 @@ void flush_n_invalidate_dcache_all(void)
 {
 	__dc_entire_op(OP_FLUSH_N_INV);
 
-#ifdef CONFIG_ISA_ARCV2
-	if (slc_exists)
+	if (is_isa_arcv2() && slc_exists)
 		__slc_entire_op(OP_FLUSH_N_INV);
-#endif
 }
 
 void flush_dcache_all(void)
 {
 	__dc_entire_op(OP_FLUSH);
 
-#ifdef CONFIG_ISA_ARCV2
-	if (slc_exists)
+	if (is_isa_arcv2() && slc_exists)
 		__slc_entire_op(OP_FLUSH);
-#endif
 }
