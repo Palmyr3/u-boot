@@ -63,9 +63,18 @@ void read_decode_mmu_bcr(void)
 #endif /* (CONFIG_ARC_MMU_VER >= 4) */
 }
 
+static inline bool slc_status(void)
+{
+	/* TODO: HS 3.0 supports SLC disable so we need to check it here */
+	return slc_exists;
+}
+
 static void __slc_entire_op(const int op)
 {
 	unsigned int ctrl;
+
+	if (!slc_status())
+		return;
 
 	ctrl = read_aux_reg(ARC_AUX_SLC_CTRL);
 
@@ -102,6 +111,9 @@ static void __slc_rgn_op(unsigned long paddr, unsigned long sz, const int op)
 {
 	unsigned int ctrl;
 	unsigned long end;
+
+	if (!slc_status())
+		return;
 
 	/*
 	 * The Region Flush operation is specified by CTRL.RGN_OP[11..9]
@@ -284,7 +296,7 @@ void invalidate_icache_all(void)
 {
 	__ic_entire_invalidate();
 
-	if (is_isa_arcv2() && slc_exists)
+	if (is_isa_arcv2())
 		__slc_entire_op(OP_INV);
 }
 
@@ -405,7 +417,7 @@ void invalidate_dcache_range(unsigned long start, unsigned long end)
 	if (!is_isa_arcv2() || !ioc_exists)
 		__dc_line_op(start, end - start, OP_INV);
 
-	if (is_isa_arcv2() && slc_exists && !ioc_exists)
+	if (is_isa_arcv2() && !ioc_exists)
 		__slc_rgn_op(start, end - start, OP_INV);
 }
 
@@ -422,7 +434,7 @@ void flush_dcache_range(unsigned long start, unsigned long end)
 	if (!is_isa_arcv2() || !ioc_exists)
 		__dc_line_op(start, end - start, OP_FLUSH);
 
-	if (is_isa_arcv2() && slc_exists && !ioc_exists)
+	if (is_isa_arcv2() && !ioc_exists)
 		__slc_rgn_op(start, end - start, OP_FLUSH);
 }
 
@@ -441,7 +453,7 @@ void flush_n_invalidate_dcache_all(void)
 {
 	__dc_entire_op(OP_FLUSH_N_INV);
 
-	if (is_isa_arcv2() && slc_exists)
+	if (is_isa_arcv2())
 		__slc_entire_op(OP_FLUSH_N_INV);
 }
 
@@ -449,6 +461,6 @@ void flush_dcache_all(void)
 {
 	__dc_entire_op(OP_FLUSH);
 
-	if (is_isa_arcv2() && slc_exists)
+	if (is_isa_arcv2())
 		__slc_entire_op(OP_FLUSH);
 }
