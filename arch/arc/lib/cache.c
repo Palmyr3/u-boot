@@ -501,3 +501,13 @@ void sync_icache_dcache_all(void)
 	__dc_entire_op(OP_FLUSH);
 	__ic_entire_invalidate();
 }
+
+void sync_n_cleanup_cache_all(void)
+{
+	__dc_entire_op(OP_FLUSH_N_INV);
+
+	if (is_isa_arcv2())
+		__slc_entire_op(OP_FLUSH_N_INV);
+
+	__ic_entire_invalidate();
+}

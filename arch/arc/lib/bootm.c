@@ -4,6 +4,7 @@
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
+#include <asm/cache.h>
 #include <common.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -45,8 +46,7 @@ int arch_fixup_fdt(void *blob)
 static int cleanup_before_linux(void)
 {
 	disable_interrupts();
-	flush_dcache_all();
-	invalidate_icache_all();
+	sync_n_cleanup_cache_all();
 
 	return 0;
 }
