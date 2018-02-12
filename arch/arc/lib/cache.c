@@ -326,8 +326,11 @@ void invalidate_icache_all(void)
 {
 	__ic_entire_invalidate();
 
-	if (is_isa_arcv2())
-		__slc_entire_op(OP_INV);
+	/*
+	 * We don't to invalidate SLC here as we can lose some data from
+	 * SLC (especially if L1 D$ is disabled) because SLC is shared for
+	 * data and instructions.
+	 */
 }
 
 int dcache_status(void)
