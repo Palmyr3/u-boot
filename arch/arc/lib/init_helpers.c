@@ -10,10 +10,8 @@ DECLARE_GLOBAL_DATA_PTR;
 
 int init_cache_f_r(void)
 {
-	flush_n_invalidate_dcache_all();
-
-	/* Actually needed only in case of disabled dcache */
-	invalidate_icache_all();
-
+#ifndef CONFIG_SYS_DCACHE_OFF
+	flush_dcache_all();
+#endif
 	return 0;
 }
