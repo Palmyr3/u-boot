@@ -491,3 +491,13 @@ void flush_dcache_all(void)
 	if (is_isa_arcv2())
 		__slc_entire_op(OP_FLUSH);
 }
+
+/*
+ * This is function for making I/D Caches consistent when modifying u-boot code
+ * (relocation, etc...)
+ */
+void sync_icache_dcache_all(void)
+{
+	__dc_entire_op(OP_FLUSH);
+	__ic_entire_invalidate();
+}
