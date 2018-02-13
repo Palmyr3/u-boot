@@ -15,6 +15,9 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+static inline void __ic_entire_invalidate(void);
+static inline void __dc_entire_op(const int cacheop);
+
 /* Bit values in IC_CTRL */
 #define IC_CTRL_CACHE_DISABLE	BIT(0)
 
@@ -299,9 +302,13 @@ void icache_enable(void)
 
 void icache_disable(void)
 {
-	if (icache_exists())
-		write_aux_reg(ARC_AUX_IC_CTRL, read_aux_reg(ARC_AUX_IC_CTRL) |
-			      IC_CTRL_CACHE_DISABLE);
+	if (!icache_exists())
+		return;
+
+	__ic_entire_invalidate();
+
+	write_aux_reg(ARC_AUX_IC_CTRL, read_aux_reg(ARC_AUX_IC_CTRL) |
+		      IC_CTRL_CACHE_DISABLE);
 }
 
 /* IC supports only invalidation */
@@ -357,6 +364,8 @@ void dcache_disable(void)
 {
 	if (!dcache_exists())
 		return;
+
+	__dc_entire_op(OP_FLUSH_N_INV);
 
 	write_aux_reg(ARC_AUX_DC_CTRL, read_aux_reg(ARC_AUX_DC_CTRL) |
 		      DC_CTRL_CACHE_DISABLE);
