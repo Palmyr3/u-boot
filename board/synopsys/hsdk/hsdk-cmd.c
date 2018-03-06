@@ -15,17 +15,17 @@
 	#error "hsdk_go will not work with BIG endian CPU"
 #endif
 
-#define HSDKGO_VERSION	"0.9"
+#define HSDKGO_VERSION	"1.2-rc1"
 
 #define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
 
-/* TODO: move to common config */
+/* TODO: move NR_CPUS to common config */
 #define NR_CPUS		4
 #define ALL_CPU_MASK	0xF	/* GENMASK(NR_CPUS - 1, 0) */
 #define MASTER_CPU	0
 #define MAX_CMD_LEN	25
 #define HZ_IN_MHZ	1000000
-
+#define APT_SHIFT	28
 #define NO_CCM		0x10
 
 /* Uncached access macros */
@@ -452,18 +452,6 @@ static int env_process_and_validate(const struct hsdk_env_map_common *common,
 	return 0;
 }
 
-/* TODO: move to explicit external cache header */
-void __l1_dc_invalidate_all(void);
-void __l1_dc_flush_all(void);
-
-/* Bit values in IC_CTRL */
-#define IC_CTRL_CACHE_DISABLE	(1 << 0)
-/* Bit values in DC_CTRL */
-#define DC_CTRL_CACHE_DISABLE	(1 << 0)
-#define DC_CTRL_INV_MODE_FLUSH	(1 << 6)
-#define DC_CTRL_FLUSH_STATUS	(1 << 8)
-#define APT_SHIFT		28
-
 // TODO: add xCCM runtime check
 static void smp_init_slave_cpu_func(u32 core)
 {
@@ -502,69 +490,36 @@ static void init_claster_nvlim(void)
 	flush_n_invalidate_dcache_all();
 }
 
-/* TODO: use generic status functions */
-
 static void init_master_icache(void)
 {
-#ifdef CONFIG_SYS_ICACHE_OFF
-	unsigned int r;
+	if (icache_status()) {
+		/* I$ is enabled - we need to disable it */
+		if (!env_common.icache.val)
+			icache_disable();
+	} else {
+		/* I$ is disabled - we need to enable it */
+		if (env_common.icache.val) {
+			icache_enable();
 
-	/* enable if required, else - nothing to do */
-	if (env_common.icache.val) {
-		r = ARC_AUX_IC_CTRL;
-		write_aux_reg(r, read_aux_reg(r) & ~IC_CTRL_CACHE_DISABLE);
+			/* invalidate I$ right after enable */
+			invalidate_icache_all();
+		}
 	}
-#else
-	/* disable if required, else - nothing to do (we will invalidate i$
-	 * just before app launch) */
-	if (!env_common.icache.val) {
-		/* next code copied from board_hsdk.c */
-		/* instruction cache invalidate */
-		write_aux_reg(ARC_AUX_IC_IVIC, 0x00000001U);
-		/* HS Databook, 5.3.3.2: three NOP's must be inserted inbetween
-		 * invalidate and disable  */
-		__builtin_arc_nop();
-		__builtin_arc_nop();
-		__builtin_arc_nop();
-		/* instruction cache disable */
-		write_aux_reg(ARC_AUX_IC_CTRL, 0x00000001U);
-	}
-#endif
 }
 
 static void init_master_dcache(void)
 {
-#ifdef CONFIG_SYS_ICACHE_OFF
-	unsigned int r;
+	if (dcache_status()) {
+		/* I$ is enabled - we need to disable it */
+		if (!env_common.dcache.val)
+			dcache_disable();
+	} else {
+		/* I$ is disabled - we need to enable it */
+		if (env_common.dcache.val)
+			dcache_enable();
 
-	/* enable if required, else - nothing to do */
-	if (env_common.dcache.val) {
-		r = ARC_AUX_DC_CTRL;
-		write_aux_reg(r, read_aux_reg(r) & ~(DC_CTRL_CACHE_DISABLE | DC_CTRL_INV_MODE_FLUSH));
+		/* TODO: probably we need ti invalidate D$ right after enable */
 	}
-#else
-	/* disable if required, else - nothing to do (we will flush d$ and sl$
-	 * just before app launch) */
-	if (!env_common.dcache.val) {
-		/* next code copied from board_hsdk.c */
-		flush_dcache_all(); /* TODO: it is OK if we flush SL$ too? */
-		/* data cache ctrl: invalidate mode to: invalidate dc and flush
-		 * dirty entries */
-		write_aux_reg(ARC_AUX_DC_CTRL, 0x00000060U);
-		/* data cache invalidate */
-		write_aux_reg(ARC_AUX_DC_IVDC, 0x00000001U);
-		/* data cache disable */
-		write_aux_reg(ARC_AUX_DC_CTRL, 0x00000001U);
-	}
-#endif
-}
-
-static int cleanup_cache_before_go(void)
-{
-	flush_n_invalidate_dcache_all();
-	invalidate_icache_all();
-
-	return 0;
 }
 
 /* ********************* SMP: START ********************* */
@@ -575,7 +530,7 @@ static int cleanup_cache_before_go(void)
 static int cleanup_before_go(void)
 {
 	disable_interrupts();
-	cleanup_cache_before_go();
+	sync_n_cleanup_cache_all();
 
 	return 0;
 }
@@ -678,21 +633,21 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 
 	smp_kick_cpu_x(cpu_id);
 
-	debug("CPU %u: cross-cpu UC flag: %x [before timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.data_flag));
+	debug("CPU %u: cross-cpu flag: %x [before timeout]\n", cpu_id,
+	      arc_read_uncached_32(&cross_cpu_data.data_flag));
 
-	/* TODO: add dcache invalidation here */
-	while (!arc_read_uncached_32(&cross_cpu_data.data_flag) && timeout) {
-		timeout--;
+	while (!arc_read_uncached_32(&cross_cpu_data.data_flag) && timeout--)
 		mdelay(10);
-	}
 
 	/* We need to panic here as there is no option to halt slave cpu
 	 * (or check that slave cpu is halted) */
 	if (!timeout)
 		pr_err("CPU %u is not responding after init!\n", cpu_id);
 
-	debug("CPU %u: cross-cpu UC flag: %x [after timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.data_flag));
-	debug("CPU %u: status: %d [after timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.status[cpu_id]));
+	debug("CPU %u: cross-cpu flag: %x [after timeout]\n", cpu_id,
+	      arc_read_uncached_32(&cross_cpu_data.data_flag));
+	debug("CPU %u: status: %d [after timeout]\n", cpu_id,
+	      arc_read_uncached_32(&cross_cpu_data.status[cpu_id]));
 }
 
 static void do_init_slave_cpus(void)
