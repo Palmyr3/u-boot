@@ -71,6 +71,15 @@ int board_early_init_r(void)
 	/* Init USB to be able read environment from USB MSD */
 	/* usb_init(); */ /* Temporary disable init as it break usb in linux */
 
+	/*
+	 * Flush all d$ as we want to use uncached area with .di instructions
+	 * and we don't want to have any dirty line in L1d$ or SL$ in this area.
+	 * It is enough to flush all d$ once here as we access to uncached area
+	 * with regular st (non .di) instruction only when we copy data during
+	 * u-boot relocation.
+	 */
+	flush_dcache_all();
+
 	return 0;
 }
 

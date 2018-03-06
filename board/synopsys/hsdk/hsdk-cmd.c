@@ -19,13 +19,11 @@
 
 #define ceil(x, y) ({ ulong __x = (x), __y = (y); (__x + __y - 1) / __y; })
 
-/* TODO: move NR_CPUS to common config */
-#define NR_CPUS		4
-#define ALL_CPU_MASK	0xF	/* GENMASK(NR_CPUS - 1, 0) */
+#define ALL_CPU_MASK	GENMASK(NR_CPUS - 1, 0)
 #define MASTER_CPU	0
 #define MAX_CMD_LEN	25
 #define HZ_IN_MHZ	1000000
-#define APT_SHIFT	28
+#define APERTURE_SHIFT	28
 #define NO_CCM		0x10
 
 /* Uncached access macros */
@@ -188,17 +186,17 @@ int soc_clk_ctl(const char *name, ulong *rate, enum clk_ctl ctl)
 
 	priv_rate = clk_get_rate(&clk);
 
-	if ((ctl & CLK_GET) && rate != NULL) {
+	if ((ctl & CLK_GET) && rate != NULL)
 		*rate = priv_rate;
-	}
 
 	clk_free(&clk);
 
-	if (ctl & CLK_PRINT) {
-		printf("HSDK: clock '%s' rate %lu MHz\n", name, ceil(priv_rate, HZ_IN_MHZ));
-	} else {
-		debug("HSDK: clock '%s' rate %lu MHz\n", name, ceil(priv_rate, HZ_IN_MHZ));
-	}
+	priv_rate = ceil(priv_rate, HZ_IN_MHZ);
+
+	if (ctl & CLK_PRINT)
+		printf("HSDK: clock '%s' rate %lu MHz\n", name, priv_rate);
+	else
+		debug("HSDK: clock '%s' rate %lu MHz\n", name, priv_rate);
 
 	return 0;
 }
@@ -386,10 +384,9 @@ static void envs_cleanup_common(const struct hsdk_env_map_common *map)
 
 static int envs_read_common(const struct hsdk_env_map_common *map)
 {
-	u32 i;
 	int ret;
 
-	for (i = 0; map[i].env_name; i++) {
+	for (u32 i = 0; map[i].env_name; i++) {
 		ret = env_read_common(i, map);
 		if (ret)
 			return ret;
@@ -400,10 +397,9 @@ static int envs_read_common(const struct hsdk_env_map_common *map)
 
 static int envs_validate_common(const struct hsdk_env_map_common *map)
 {
-	u32 i;
 	int ret;
 
-	for (i = 0; map[i].env_name; i++) {
+	for (u32 i = 0; map[i].env_name; i++) {
 		ret = env_validate_common(i, map);
 		if (ret)
 			return ret;
@@ -431,18 +427,17 @@ static int env_read_validate_common(const struct hsdk_env_map_common *map)
 
 static int env_read_validate_core(const struct hsdk_env_map_core *map)
 {
-	u32 i;
 	int ret;
 
 	envs_cleanup_core(map);
 
-	for (i = 0; map[i].env_name; i++) {
+	for (u32 i = 0; map[i].env_name; i++) {
 		ret = env_read_core(i, map);
 		if (ret)
 			return ret;
 	}
 
-	for (i = 0; map[i].env_name; i++) {
+	for (u32 i = 0; map[i].env_name; i++) {
 		ret = env_validate_core(i, map);
 		if (ret)
 			return ret;
@@ -475,12 +470,12 @@ static void smp_init_slave_cpu_func(u32 core)
 	/* ICCM move if exists */
 	val = uncached_env_get(&env_core.iccm[core]);
 	if (val != NO_CCM)
-		write_aux_reg(ARC_AUX_ICCM_BASE, val << APT_SHIFT);
+		write_aux_reg(ARC_AUX_ICCM_BASE, val << APERTURE_SHIFT);
 
 	/* DCCM move if exists */
 	val = uncached_env_get(&env_core.dccm[core]);
 	if (val != NO_CCM)
-		write_aux_reg(ARC_AUX_DCCM_BASE, val << APT_SHIFT);
+		write_aux_reg(ARC_AUX_DCCM_BASE, val << APERTURE_SHIFT);
 
 	/* i$ enable if required (it is disabled by default) */
 	if (uncached_env_get(&env_common.icache)) {
@@ -495,7 +490,7 @@ static void smp_init_slave_cpu_func(u32 core)
 
 static void init_claster_nvlim(void)
 {
-	u32 val = uncached_env_get(&env_common.nvlim) << APT_SHIFT;
+	u32 val = uncached_env_get(&env_common.nvlim) << APERTURE_SHIFT;
 
 	flush_dcache_all();
 	write_aux_reg(ARC_AUX_NON_VOLATILE_LIMIT, val);
@@ -666,11 +661,9 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 
 static void do_init_slave_cpus(void)
 {
-	u32 i;
-
 	clear_cross_cpu_data();
 
-	for (i = 1; i < NR_CPUS; i++)
+	for (u32 i = MASTER_CPU + 1; i < NR_CPUS; i++)
 		if (is_cpu_used(i))
 			do_init_slave_cpu(i);
 }
@@ -840,8 +833,11 @@ static void setup_clocks(void)
 
 static void do_init_claster(void)
 {
-	/* A multi-core ARC HS configuration always includes only one
-	 * ARC_AUX_NON_VOLATILE_LIMIT register, which is shared by all the cores. */
+	/*
+	 * A multi-core ARC HS configuration always includes only one
+	 * ARC_AUX_NON_VOLATILE_LIMIT register, which is shared by all the
+	 * cores.
+	 */
 	init_claster_nvlim();
 
 	init_memory_bridge();
@@ -914,7 +910,6 @@ static int hsdk_go_run(u32 cpu_start_reg)
 
 int board_prep_linux(bootm_headers_t *images)
 {
-	u32 i;
 	int ret;
 	char dt_cpu_path[30];
 
@@ -939,7 +934,8 @@ int board_prep_linux(bootm_headers_t *images)
 		}
 	}
 
-	for (i = 0; i < NR_CPUS; i++) {
+	/* TODO: switch to possible-cpus mask from status */
+	for (u32 i = 0; i < NR_CPUS; i++) {
 		if (!is_cpu_used(i)) {
 			sprintf(dt_cpu_path, "/cpus/cpu@%u", i);
 			ret = fdt_status_disabled_by_alias(images->ft_addr, dt_cpu_path);
@@ -954,7 +950,7 @@ int board_prep_linux(bootm_headers_t *images)
 void board_jump_and_run(ulong entry, int zero, int arch, uint params)
 {
 	void (*kernel_entry)(int zero, int arch, uint params);
-	u32 cpu_start_reg, i;
+	u32 cpu_start_reg;
 
 	kernel_entry = (void (*)(int, int, uint))entry;
 
@@ -965,7 +961,7 @@ void board_jump_and_run(ulong entry, int zero, int arch, uint params)
 	smp_set_core_boot_addr(entry, -1);
 
 	/* In case of run with hsdk_init */
-	for (i = 0; i < NR_CPUS; i++)
+	for (u32 i = 0; i < NR_CPUS; i++)
 		uncached_env_set(&env_core.entry[i], entry);
 
 	/* Entry goes to slave cpu icache so we need to flush master cpu dcache
@@ -981,10 +977,8 @@ void board_jump_and_run(ulong entry, int zero, int arch, uint params)
 
 static int hsdk_go_prepare_and_run(void)
 {
-	u32 reg;
-
 	/* Prepare CREG_CPU_START for kicking chosen CPUs */
-	reg = prepare_cpu_ctart_reg();
+	u32 reg = prepare_cpu_ctart_reg();
 
 	if (halt_on_boot)
 		printf("CPU will halt before application start, start application with debugger.\n");
@@ -992,7 +986,7 @@ static int hsdk_go_prepare_and_run(void)
 	return hsdk_go_run(reg);
 }
 
-static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_go(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
 	int ret;
 
@@ -1033,7 +1027,7 @@ U_BOOT_CMD(
 	"hsdk_go halt - Boot stand-alone application on HSDK, halt CPU just before application run\n"
 );
 
-static int do_hsdk_init(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_init(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
 	static bool done = false;
 	int ret;
@@ -1062,11 +1056,10 @@ U_BOOT_CMD(
 	"- Init HSDK HW\n"
 );
 
-static int hsdk_read_args_search(const struct hsdk_env_map_common *map, int argc, char * const argv[])
+static int hsdk_read_args_search(const struct hsdk_env_map_common *map,
+				 int argc, char *const argv[])
 {
-	int i;
-
-	for (i = 0; map[i].env_name; i++) {
+	for (int i = 0; map[i].env_name; i++) {
 		if (!strcmp(argv[0], map[i].env_name))
 			return i;
 	}
@@ -1076,7 +1069,8 @@ static int hsdk_read_args_search(const struct hsdk_env_map_common *map, int argc
 	return -ENOENT;
 }
 
-static int arg_read_set(const struct hsdk_env_map_common *map, u32 i, int argc, char *const argv[])
+static int arg_read_set(const struct hsdk_env_map_common *map, u32 i, int argc,
+			char *const argv[])
 {
 	char *endp = argv[1];
 	u32 value;
@@ -1098,7 +1092,10 @@ static int arg_read_set(const struct hsdk_env_map_common *map, u32 i, int argc, 
 	return -EINVAL;
 }
 
-static int hsdk_args_enumerate(const struct hsdk_env_map_common *map, int enum_by, int (*act)(const struct hsdk_env_map_common *, u32, int, char *const []), int argc, char * const argv[])
+static int
+hsdk_args_enumerate(const struct hsdk_env_map_common *map,
+		    int enum_by, int (*act)(const struct hsdk_env_map_common *,
+		    u32, int, char *const []), int argc, char *const argv[])
 {
 	u32 i;
 
@@ -1131,7 +1128,8 @@ static int hsdk_args_enumerate(const struct hsdk_env_map_common *map, int enum_b
 	return 0;
 }
 
-static int do_hsdk_clock_set(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_clock_set(cmd_tbl_t *cmdtp, int flag, int argc,
+			     char *const argv[])
 {
 	int ret = 0;
 
@@ -1170,34 +1168,27 @@ int env_set_hexi(const char *varname, ulong value)
 	return env_set(varname, str);
 }
 
-static int do_hsdk_clock_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_clock_get(cmd_tbl_t *cmdtp, int flag, int argc,
+			     char *const argv[])
 {
-	int ret = 0;
 	ulong rate;
 
-	/* TODO: get rid of ret */
-	ret = soc_clk_ctl("cpu-clk", &rate, CLK_GET);
-	if (ret)
+	if (soc_clk_ctl("cpu-clk", &rate, CLK_GET))
 		return CMD_RET_FAILURE;
 
-	ret = env_set_ulong("cpu_freq", ceil(rate, HZ_IN_MHZ));
-	if (ret)
+	if (env_set_ulong("cpu_freq", ceil(rate, HZ_IN_MHZ)))
 		return CMD_RET_FAILURE;
 
-	ret = soc_clk_ctl("tun-clk", &rate, CLK_GET);
-	if (ret)
+	if (soc_clk_ctl("tun-clk", &rate, CLK_GET))
 		return CMD_RET_FAILURE;
 
-	ret = env_set_ulong("tun_freq", ceil(rate, HZ_IN_MHZ));
-	if (ret)
+	if (env_set_ulong("tun_freq", ceil(rate, HZ_IN_MHZ)))
 		return CMD_RET_FAILURE;
 
-	ret = soc_clk_ctl("axi-clk", &rate, CLK_GET);
-	if (ret)
+	if (soc_clk_ctl("axi-clk", &rate, CLK_GET))
 		return CMD_RET_FAILURE;
 
-	ret = env_set_ulong("axi_freq", ceil(rate, HZ_IN_MHZ));
-	if (ret)
+	if (env_set_ulong("axi_freq", ceil(rate, HZ_IN_MHZ)))
 		return CMD_RET_FAILURE;
 
 	printf("Clock values are saved to environment\n");
@@ -1205,7 +1196,8 @@ static int do_hsdk_clock_get(cmd_tbl_t *cmdtp, int flag, int argc, char * const 
 	return CMD_RET_SUCCESS;
 }
 
-static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc,
+			       char *const argv[])
 {
 	/* Main clocks */
 	soc_clk_ctl("cpu-clk", NULL, CLK_PRINT);
@@ -1216,7 +1208,8 @@ static int do_hsdk_clock_print(cmd_tbl_t *cmdtp, int flag, int argc, char * cons
 	return CMD_RET_SUCCESS;
 }
 
-static int do_hsdk_clock_print_all(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_clock_print_all(cmd_tbl_t *cmdtp, int flag, int argc,
+	                           char *const argv[])
 {
 	/* CPU clock domain */
 	soc_clk_ctl("cpu-pll", NULL, CLK_PRINT);
@@ -1269,7 +1262,7 @@ cmd_tbl_t cmd_hsdk_clock[] = {
 	U_BOOT_CMD_MKENT(print_all, 4, 0, do_hsdk_clock_print_all, "", ""),
 };
 
-static int do_hsdk_clock(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_hsdk_clock(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
 	cmd_tbl_t *c;
 

@@ -12,6 +12,7 @@
 /*
  *  CPU configuration
  */
+#define NR_CPUS				4
 #define ARC_PERIPHERAL_BASE		0xF0000000
 #define ARC_DWMMC_BASE			(ARC_PERIPHERAL_BASE + 0xA000)
 #define ARC_DWGMAC_BASE			(ARC_PERIPHERAL_BASE + 0x18000)
