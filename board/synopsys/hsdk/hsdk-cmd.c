@@ -453,7 +453,6 @@ static int env_process_and_validate(const struct hsdk_env_map_common *common,
 }
 
 /* TODO: move to explicit external cache header */
-void __l1_ic_invalidate_all(void);
 void __l1_dc_invalidate_all(void);
 void __l1_dc_flush_all(void);
 
@@ -484,15 +483,13 @@ static void smp_init_slave_cpu_func(u32 core)
 
 	/* i$ enable if required (it is disabled by default) */
 	if (env_common.icache.val) {
-		r = ARC_AUX_IC_CTRL;
-		write_aux_reg(r, read_aux_reg(r) & ~IC_CTRL_CACHE_DISABLE);
+		icache_enable();
+		invalidate_icache_all();
 	}
 
 	/* d$ enable if required (it is disabled by default) */
-	if (env_common.dcache.val) {
-		r = ARC_AUX_DC_CTRL;
-		write_aux_reg(r, read_aux_reg(r) & ~(DC_CTRL_CACHE_DISABLE | DC_CTRL_INV_MODE_FLUSH));
-	}
+	if (env_common.dcache.val)
+		dcache_enable();
 }
 
 static void init_claster_nvlim(void)
@@ -504,10 +501,6 @@ static void init_claster_nvlim(void)
 	write_aux_reg(AUX_AUX_CACHE_LIMIT, val);
 	flush_n_invalidate_dcache_all();
 }
-
-// TODO: !! add my own implementation of flush_dcache_all, invalidate_icache_all
-// as current implementations depends on CONFIG_SYS_DCACHE_OFF and
-// CONFIG_SYS_ICACHE_OFF
 
 /* TODO: use generic status functions */
 
@@ -613,18 +606,6 @@ static u32 prepare_cpu_ctart_reg(void)
 	return cmd | env_common.core_mask.val;
 }
 
-volatile u32 data_flag;
-volatile u32 stack_ptr;
-
-static inline void set_data_flag(void)
-{
-	__asm__ __volatile__(	"mov	r8,	%%sp\n"
-				"st	r8,	%0\n"
-	 			: "=m" (data_flag)
-				: /* no input */
-				: "memory");
-}
-
 /* flatten */
 __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 {
@@ -637,12 +618,8 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 1);
 	smp_init_slave_cpu_func(CPU_ID_GET());
 
-//	set_data_flag();
 	arc_write_uncached_32(&cross_cpu_data.data_flag, 0x12345678);
 	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 2);
-
-	/* Make sure other cores see written value in memory */
-	flush_dcache_all();
 
 	/* Halt the processor untill the master kick us again */
 	halt_this_cpu();
@@ -653,9 +630,8 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 
 	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 3);
 
-	/* get the updated entry - invalidate L1i$ */
-	__l1_ic_invalidate_all();
-//	__l1_dc_invalidate_all();
+	/* get the updated entry - invalidate i$ */
+	invalidate_icache_all();
 
 	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 4);
 
@@ -681,18 +657,17 @@ static void clear_cross_cpu_data(void)
 noinline static void do_init_slave_cpu(u32 cpu_id)
 {
 	u32 timeout = 5000;
+	/* TODO: optimize memory usage, now we have one unused aperture */
+	u32 stack_ptr = (u32)(slave_stack + (64 * cpu_id));
 
-//	data_flag = 0;
 	arc_write_uncached_32(&cross_cpu_data.data_flag, 0);
 
 	/* Use global unic place for slave cpu stack */
-	/* TODO: optimize memory usage, now we have one unused aperture */
-	stack_ptr = (u32)(slave_stack + (64 * cpu_id));
-	arc_write_uncached_32(&cross_cpu_data.stack_ptr, (u32)(slave_stack + (64 * cpu_id)));
+	arc_write_uncached_32(&cross_cpu_data.stack_ptr, stack_ptr);
 
 	/* TODO: remove useless debug's in do_init_slave_cpu */
-	debug("CPU %u: stack base: %x\n", cpu_id, stack_ptr);
 	debug("CPU %u: stack pool base: %p\n", cpu_id, slave_stack);
+	debug("CPU %u: stack base: %x\n", cpu_id, stack_ptr);
 	smp_set_core_boot_addr((unsigned long)hsdk_core_init_f, -1);
 
 	/*
@@ -703,17 +678,12 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 
 	smp_kick_cpu_x(cpu_id);
 
-//	debug("CPU %u: cross-cpu flag: %x [before timeout]\n", cpu_id, data_flag);
 	debug("CPU %u: cross-cpu UC flag: %x [before timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.data_flag));
 
 	/* TODO: add dcache invalidation here */
 	while (!arc_read_uncached_32(&cross_cpu_data.data_flag) && timeout) {
 		timeout--;
 		mdelay(10);
-		/* we need L1d$ invalidation here, if we use slave CPUs with
-		 * disabled L1d$, as we configure master CPU caches later.
-		 * (master CPU L1d$ is possibly enabled here) */
-		__l1_dc_invalidate_all();
 	}
 
 	/* We need to panic here as there is no option to halt slave cpu
@@ -721,7 +691,6 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 	if (!timeout)
 		pr_err("CPU %u is not responding after init!\n", cpu_id);
 
-//	debug("CPU %u: cross-cpu flag: %x [after timeout]\n", cpu_id, data_flag);
 	debug("CPU %u: cross-cpu UC flag: %x [after timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.data_flag));
 	debug("CPU %u: status: %d [after timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.status[cpu_id]));
 }
