@@ -628,16 +628,19 @@ static inline void set_data_flag(void)
 /* flatten */
 __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 {
-	__asm__ __volatile__(	"ld	r8,	%0\n"
+	__asm__ __volatile__(	"ld.di	r8,	[%0]\n"
 				"mov	%%sp,	r8\n"
 				"mov	%%fp,	%%sp\n"
 	 			: /* no output */
-				: "m" (stack_ptr)
-				: "memory");
+				: "r" (&cross_cpu_data.stack_ptr));
 
+	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 1);
 	smp_init_slave_cpu_func(CPU_ID_GET());
 
-	set_data_flag();
+//	set_data_flag();
+	arc_write_uncached_32(&cross_cpu_data.data_flag, 0x12345678);
+	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 2);
+
 	/* Make sure other cores see written value in memory */
 	flush_dcache_all();
 
@@ -648,27 +651,44 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 	__builtin_arc_nop();
 	__builtin_arc_nop();
 
+	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 3);
+
 	/* get the updated entry - invalidate L1i$ */
 	__l1_ic_invalidate_all();
 //	__l1_dc_invalidate_all();
 
+	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 4);
+
 	/* Run our program */
 	((void (*)(void))(env_core.entry[CPU_ID_GET()].val))();
+
+	arc_write_uncached_32(&cross_cpu_data.status[CPU_ID_GET()], 5);
 
 	/* Something went terribly wrong */
 	while (true)
 		halt_this_cpu();
 }
 
+static void clear_cross_cpu_data(void)
+{
+	arc_write_uncached_32(&cross_cpu_data.data_flag, 0);
+	arc_write_uncached_32(&cross_cpu_data.stack_ptr, 0);
+
+	for (u32 i = 0; i < NR_CPUS; i++)
+		arc_write_uncached_32(&cross_cpu_data.status[i], 0);
+}
+
 noinline static void do_init_slave_cpu(u32 cpu_id)
 {
 	u32 timeout = 5000;
 
-	data_flag = 0;
+//	data_flag = 0;
+	arc_write_uncached_32(&cross_cpu_data.data_flag, 0);
 
 	/* Use global unic place for slave cpu stack */
 	/* TODO: optimize memory usage, now we have one unused aperture */
 	stack_ptr = (u32)(slave_stack + (64 * cpu_id));
+	arc_write_uncached_32(&cross_cpu_data.stack_ptr, (u32)(slave_stack + (64 * cpu_id)));
 
 	/* TODO: remove useless debug's in do_init_slave_cpu */
 	debug("CPU %u: stack base: %x\n", cpu_id, stack_ptr);
@@ -683,10 +703,11 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 
 	smp_kick_cpu_x(cpu_id);
 
-	debug("CPU %u: cross-cpu flag: %x [before timeout]\n", cpu_id, data_flag);
+//	debug("CPU %u: cross-cpu flag: %x [before timeout]\n", cpu_id, data_flag);
+	debug("CPU %u: cross-cpu UC flag: %x [before timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.data_flag));
 
 	/* TODO: add dcache invalidation here */
-	while (!data_flag && timeout) {
+	while (!arc_read_uncached_32(&cross_cpu_data.data_flag) && timeout) {
 		timeout--;
 		mdelay(10);
 		/* we need L1d$ invalidation here, if we use slave CPUs with
@@ -700,12 +721,16 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 	if (!timeout)
 		pr_err("CPU %u is not responding after init!\n", cpu_id);
 
-	debug("CPU %u: cross-cpu flag: %x [after timeout]\n", cpu_id, data_flag);
+//	debug("CPU %u: cross-cpu flag: %x [after timeout]\n", cpu_id, data_flag);
+	debug("CPU %u: cross-cpu UC flag: %x [after timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.data_flag));
+	debug("CPU %u: status: %d [after timeout]\n", cpu_id, arc_read_uncached_32(&cross_cpu_data.status[cpu_id]));
 }
 
 static void do_init_slave_cpus(void)
 {
 	u32 i;
+
+	clear_cross_cpu_data();
 
 	for (i = 1; i < NR_CPUS; i++)
 		if (is_cpu_used(i))
