@@ -1,4 +1,4 @@
-//#define DEBUG
+#define DEBUG
 
 #include <common.h>
 #include <config.h>
@@ -21,12 +21,31 @@
 
 /* TODO: move to common config */
 #define NR_CPUS		4
-#define ALL_CPU_MASK	0xF	/* GENMASK(NR_CPUS, 0) */
+#define ALL_CPU_MASK	0xF	/* GENMASK(NR_CPUS - 1, 0) */
 #define MASTER_CPU	0
 #define MAX_CMD_LEN	25
 #define HZ_IN_MHZ	1000000
 
 #define NO_CCM		0x10
+
+/* Uncached access macros */
+#define arc_read_uncached_32(ptr)	\
+({					\
+	unsigned int __ret;		\
+	__asm__ __volatile__(		\
+	"	ld.di %0, [%1]	\n"	\
+	: "=r"(__ret)			\
+	: "r"(ptr));			\
+	__ret;				\
+})
+
+#define arc_write_uncached_32(ptr, data)\
+({					\
+	__asm__ __volatile__(		\
+	"	st.di %0, [%1]	\n"	\
+	:				\
+	: "r"(data), "r"(ptr));		\
+})
 
 enum clk_ctl {
 	CLK_SET		= BIT(0), /* set frequency */
@@ -46,15 +65,20 @@ enum env_type {
 
 typedef struct {
 	u32 val;
-	bool set;
+	/* use u32 instead bool to all env be aligned for uncached operations */
+	u32 set;
 } u32_env;
 
+/* Uncached */
 struct hsdk_env_core_ctl {
 	u32_env entry[NR_CPUS];
 	u32_env iccm[NR_CPUS];
 	u32_env dccm[NR_CPUS];
-};
 
+	u8 cache_padding[ARCH_DMA_MINALIGN];
+} __aligned(ARCH_DMA_MINALIGN);
+
+/* Uncached */
 struct hsdk_env_common_ctl {
 	bool halt_on_boot;
 	u32_env core_mask;
@@ -64,7 +88,18 @@ struct hsdk_env_common_ctl {
 	u32_env nvlim;
 	u32_env icache;
 	u32_env dcache;
-};
+
+	u8 cache_padding[ARCH_DMA_MINALIGN];
+} __aligned(ARCH_DMA_MINALIGN);
+
+/* Uncached */
+struct hsdk_cross_cpu {
+	u32 data_flag;
+	u32 stack_ptr;
+	s32 status[NR_CPUS];
+
+	u8 cache_padding[ARCH_DMA_MINALIGN];
+} __aligned(ARCH_DMA_MINALIGN);
 
 struct hsdk_env_map_common {
 	const char *const env_name;
@@ -89,6 +124,7 @@ static u32 slave_stack[256 * NR_CPUS] __attribute__((aligned(4)));
 
 static struct hsdk_env_common_ctl env_common = {};
 static struct hsdk_env_core_ctl env_core = {};
+static struct hsdk_cross_cpu cross_cpu_data;
 
 int soc_clk_ctl(const char *name, ulong *rate, enum clk_ctl ctl)
 {
@@ -184,7 +220,7 @@ static const struct hsdk_env_map_core env_map_go[] = {
 static void env_clear_common(u32 index, const struct hsdk_env_map_common *map)
 {
 	map[index].val->val = 0;
-	map[index].val->set = false;
+	map[index].val->set = 1;
 }
 
 static int env_read_common(u32 index, const struct hsdk_env_map_common *map)
@@ -201,7 +237,7 @@ static int env_read_common(u32 index, const struct hsdk_env_map_common *map)
 		}
 
 		map[index].val->val = val;
-		map[index].val->set = true;
+		map[index].val->set = 1;
 	}
 
 	return 0;
@@ -213,7 +249,7 @@ static void env_clear_core(u32 index, const struct hsdk_env_map_core *map)
 
 	for (i = 0; i < NR_CPUS; i++) {
 		(*map[index].val)[i].val = 0;
-		(*map[index].val)[i].set = false;
+		(*map[index].val)[i].set = 1;
 	}
 }
 
@@ -235,7 +271,7 @@ static int env_read_core(u32 index, const struct hsdk_env_map_core *map)
 			}
 
 			(*map[index].val)[i].val = val;
-			(*map[index].val)[i].set = true;
+			(*map[index].val)[i].set = 1;
 		}
 	}
 
@@ -614,7 +650,7 @@ __attribute__((naked, noreturn, flatten)) noinline void hsdk_core_init_f(void)
 
 	/* get the updated entry - invalidate L1i$ */
 	__l1_ic_invalidate_all();
-	__l1_dc_invalidate_all();
+//	__l1_dc_invalidate_all();
 
 	/* Run our program */
 	((void (*)(void))(env_core.entry[CPU_ID_GET()].val))();
@@ -647,7 +683,7 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 
 	smp_kick_cpu_x(cpu_id);
 
-	debug("CPU %u: FLAG0: %x [before timeout]\n", cpu_id, data_flag);
+	debug("CPU %u: cross-cpu flag: %x [before timeout]\n", cpu_id, data_flag);
 
 	/* TODO: add dcache invalidation here */
 	while (!data_flag && timeout) {
@@ -664,7 +700,7 @@ noinline static void do_init_slave_cpu(u32 cpu_id)
 	if (!timeout)
 		pr_err("CPU %u is not responding after init!\n", cpu_id);
 
-	debug("CPU %u: FLAG1: %x [after timeout]\n", cpu_id, data_flag);
+	debug("CPU %u: cross-cpu flag: %x [after timeout]\n", cpu_id, data_flag);
 }
 
 static void do_init_slave_cpus(void)
@@ -970,7 +1006,7 @@ void board_jump_and_run(ulong entry, int zero, int arch, uint params)
 	/* In case of run with hsdk_init */
 	for (i = 0; i < NR_CPUS; i++) {
 		env_core.entry[i].val = entry;
-		env_core.entry[i].set = true;
+		env_core.entry[i].set = 1;
 	}
 
 	/* Entry goes to slave cpu icache so we need to flush master cpu dcache
@@ -1083,7 +1119,7 @@ static int arg_read_set(const struct hsdk_env_map_common *map, u32 i, int argc, 
 {
 	char *endp = argv[1];
 
-	map[i].val->set = true;
+	map[i].val->set = 1;
 
 	if (map[i].type == ENV_HEX)
 		map[i].val->val = simple_strtoul(argv[1], &endp, 16);
@@ -1095,7 +1131,7 @@ static int arg_read_set(const struct hsdk_env_map_common *map, u32 i, int argc, 
 
 	pr_err("Unexpected argument '%s', can't parse\n", argv[1]);
 
-	map[i].val->set = false;
+	map[i].val->set = 0;
 
 	return -EINVAL;
 }
