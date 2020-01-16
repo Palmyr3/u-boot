@@ -39,7 +39,7 @@ PLATFORM_CPPFLAGS += -mcpu=archs
 endif
 
 ifdef CONFIG_CPU_ARCHS38
-PLATFORM_CPPFLAGS += -mcpu=archs
+PLATFORM_CPPFLAGS += -mcpu=hs4x_rel31
 endif
 
 PLATFORM_CPPFLAGS += -ffixed-r25 -D__ARC__ -gdwarf-2 -mno-sdata
