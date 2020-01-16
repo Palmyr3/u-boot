@@ -222,7 +222,6 @@ static void init_cluster_nvlim(void)
 
 	flush_dcache_all();
 	write_aux_reg(ARC_AUX_NON_VOLATILE_LIMIT, val);
-	write_aux_reg(AUX_AUX_CACHE_LIMIT, val);
 	flush_n_invalidate_dcache_all();
 }
 
