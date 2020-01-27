@@ -59,7 +59,7 @@ def main():
     image_copy_adr  = 0x81000000
 
     # initial constant header values, do not change these values
-    arc_id          = 0x52         # 0x52 for 1st HSDK release (hardcoded in RTL)
+    arc_id          = 0x54         # 0x52 for 1st HSDK release (hardcoded in RTL)
     magic1          = 0xdeadbeafaf # big endian byte order
     flash_address   = 0x0
     flash_type      = 0x0          # 0 - SPI flash, 1 - NOR flash
@@ -80,6 +80,8 @@ def main():
     uboot_img_size = os.path.getsize(uboot_bin_filename)
     jump_address = elf_get_entry(uboot_elf_filename)
     check_sum = calc_check_sum(uboot_bin_filename)
+
+    arc_id          = 0x54
 
     # write header to file
     with open(headerised_filename, "wb") as file:
