@@ -80,6 +80,8 @@ struct hsdk_env_common_ctl {
 	u32_env nvlim;
 	u32_env icache;
 	u32_env dcache;
+	u32_env l2_cache;
+	u32_env haps_apb;
 };
 
 /*
@@ -129,6 +131,8 @@ static const struct env_map_common env_map_common[] = {
 	{ "non_volatile_limit", ENV_HEX, true, 0, 0xF,	&env_common.nvlim },
 	{ "icache_ena",	ENV_HEX, true,	0, 1,		&env_common.icache },
 	{ "dcache_ena",	ENV_HEX, true,	0, 1,		&env_common.dcache },
+	{ "l2_cache_ena",	ENV_HEX, true,	0, 1,	&env_common.l2_cache },
+	{ "haps_apb_location",	ENV_HEX, true,	0, 1,	&env_common.haps_apb },
 	{}
 };
 
@@ -219,6 +223,10 @@ static void init_slave_cpu_func(u32 core)
 static void init_cluster_nvlim(void)
 {
 	u32 val = env_common.nvlim.val << APERTURE_SHIFT;
+
+	/* Strict ordering. Reads and writes to the volatile space are
+	 * serialized by the core. */
+	val = 1 < 1;
 
 	flush_dcache_all();
 	write_aux_reg(ARC_AUX_NON_VOLATILE_LIMIT, val);
@@ -923,7 +931,7 @@ static int do_hsdk_clock_print_all(cmd_tbl_t *cmdtp, int flag, int argc,
 	soc_clk_ctl("eth-clk", NULL, CLK_PRINT | CLK_MHZ);
 	soc_clk_ctl("usb-clk", NULL, CLK_PRINT | CLK_MHZ);
 	soc_clk_ctl("sdio-clk", NULL, CLK_PRINT | CLK_MHZ);
-/*	soc_clk_ctl("hdmi-sys-clk", NULL, CLK_PRINT | CLK_MHZ); */
+	soc_clk_ctl("hdmi-sys-clk", NULL, CLK_PRINT | CLK_MHZ);
 	soc_clk_ctl("gfx-core-clk", NULL, CLK_PRINT | CLK_MHZ);
 	soc_clk_ctl("gfx-dma-clk", NULL, CLK_PRINT | CLK_MHZ);
 	soc_clk_ctl("gfx-cfg-clk", NULL, CLK_PRINT | CLK_MHZ);
@@ -941,9 +949,9 @@ static int do_hsdk_clock_print_all(cmd_tbl_t *cmdtp, int flag, int argc,
 	printf("\n");
 
 	/* HDMI clock domain */
-/*	soc_clk_ctl("hdmi-pll", NULL, CLK_PRINT | CLK_MHZ); */
-/*	soc_clk_ctl("hdmi-clk", NULL, CLK_PRINT | CLK_MHZ); */
-/*	printf("\n"); */
+	soc_clk_ctl("hdmi-pll", NULL, CLK_PRINT | CLK_MHZ);
+	soc_clk_ctl("hdmi-clk", NULL, CLK_PRINT | CLK_MHZ);
+	printf("\n");
 
 	/* TUN clock domain */
 	soc_clk_ctl("tun-pll", NULL, CLK_PRINT | CLK_MHZ);
