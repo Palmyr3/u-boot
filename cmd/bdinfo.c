@@ -443,6 +443,10 @@ int do_bdinfo(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	bd_t *bd = gd->bd;
 
 	print_bi_mem(bd);
+	if (!(gd->flags & GD_FLG_SKIP_RELOC)) {
+		print_num("relocaddr", gd->relocaddr);
+		print_num("reloc off", gd->reloc_off);
+	}
 	print_eth_ip_addr();
 	print_baudrate();
 
