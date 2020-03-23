@@ -64,41 +64,41 @@
 		"; fi\0" \
 	"core_mask=0xF\0" \
 	"hsdk_hs45d=setenv core_mask 0x2; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x0; setenv icache_ena 0x0; \
+setenv l2_cache_ena 0x0; setenv icache_ena 0x0; setenv csm_location 0x10; \
 setenv dcache_ena 0x0; setenv core_iccm_1 0x7; \
 setenv core_dccm_1 0x8; setenv non_volatile_limit 0xF;\0" \
 	"hsdk_hs47d=setenv core_mask 0x1; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x0; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x0; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_0 0x10; \
 setenv core_dccm_0 0x10; setenv non_volatile_limit 0xF;\0" \
 	"hsdk_hs47d_ccm=setenv core_mask 0x2; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x0; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x0; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_1 0x7; \
 setenv core_dccm_1 0x8; setenv non_volatile_limit 0xF;\0" \
 	"hsdk_hs48=setenv core_mask 0x1; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x1; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x1; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_0 0x10; \
 setenv core_dccm_0 0x10; setenv non_volatile_limit 0xF;\0" \
 	"hsdk_hs48_ccm=setenv core_mask 0x2; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x1; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x1; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_1 0x7; \
 setenv core_dccm_1 0x8; setenv non_volatile_limit 0xF;\0" \
 	"hsdk_hs48x2=run hsdk_hs47dx2;\0" \
 	"hsdk_hs47dx2=setenv core_mask 0x3; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x1; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x1; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_0 0x10; \
 setenv core_dccm_0 0x10; setenv non_volatile_limit 0xF; \
 setenv core_iccm_1 0x6; setenv core_dccm_1 0x6;\0" \
 	"hsdk_hs48x3=run hsdk_hs47dx3;\0" \
 	"hsdk_hs47dx3=setenv core_mask 0x7; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x1; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x1; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_0 0x10; \
 setenv core_dccm_0 0x10; setenv non_volatile_limit 0xF; \
 setenv core_iccm_1 0x6; setenv core_dccm_1 0x6; \
 setenv core_iccm_2 0x10; setenv core_dccm_2 0x10;\0" \
 	"hsdk_hs48x4=run hsdk_hs47dx4;\0" \
 	"hsdk_hs47dx4=setenv core_mask 0xF; setenv haps_apb_location 0x1; \
-setenv l2_cache_ena 0x1; setenv icache_ena 0x1; \
+setenv l2_cache_ena 0x1; setenv icache_ena 0x1; setenv csm_location 0x10; \
 setenv dcache_ena 0x1; setenv core_iccm_0 0x10; \
 setenv core_dccm_0 0x10; setenv non_volatile_limit 0xF; \
 setenv core_iccm_1 0x6; setenv core_dccm_1 0x6; \
