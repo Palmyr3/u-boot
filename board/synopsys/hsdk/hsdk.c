@@ -233,6 +233,16 @@ static void init_cluster_nvlim(void)
 	flush_n_invalidate_dcache_all();
 }
 
+static void init_cluster_slc(void)
+{
+#ifdef CONFIF_SNPS_PLAT_HSDK_4XD
+	if (env_common.l2_cache.val)
+		slc_enable();
+	else
+		slc_disable();
+#endif
+}
+
 static void init_master_icache(void)
 {
 	if (icache_status()) {
@@ -613,6 +623,7 @@ static void do_init_cluster(void)
 	 * cores.
 	 */
 	init_cluster_nvlim();
+	init_cluster_slc();
 }
 
 static int check_master_cpu_id(void)
