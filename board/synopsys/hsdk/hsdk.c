@@ -80,6 +80,7 @@ struct hsdk_env_common_ctl {
 	u32_env nvlim;
 	u32_env icache;
 	u32_env dcache;
+	u32_env csm_location;
 	u32_env l2_cache;
 	u32_env haps_apb;
 };
@@ -131,6 +132,7 @@ static const struct env_map_common env_map_common[] = {
 	{ "non_volatile_limit", ENV_HEX, true, 0, 0xF,	&env_common.nvlim },
 	{ "icache_ena",	ENV_HEX, true,	0, 1,		&env_common.icache },
 	{ "dcache_ena",	ENV_HEX, true,	0, 1,		&env_common.dcache },
+	{ "csm_location",	ENV_HEX, true,	0, NO_CCM,	&env_common.csm_location },
 	{ "l2_cache_ena",	ENV_HEX, true,	0, 1,	&env_common.l2_cache },
 	{ "haps_apb_location",	ENV_HEX, true,	0, 1,	&env_common.haps_apb },
 	{}
@@ -240,6 +242,26 @@ static void init_cluster_slc(void)
 		slc_enable();
 	else
 		slc_disable();
+#endif
+}
+
+#define CREG_CSM_BASE		(CREG_BASE + 0x210)
+
+static void init_cluster_csm(void)
+{
+#ifdef CONFIF_SNPS_PLAT_HSDK_4XD
+	if (env_common.csm_location.val == NO_CCM) {
+		write_aux_reg(ARC_AUX_CSM_ENABLE, 0);
+	} else {
+		/*
+		 * CSM base address is 256kByte aligned but we allow to map
+		 * CSM only to aperture start (256MByte aligned)
+		 */
+		u32 csm_base = env_common.csm_location.val * SZ_1K;
+
+		writel(csm_base, (void __iomem *)CREG_CSM_BASE);
+		write_aux_reg(ARC_AUX_CSM_ENABLE, 1);
+	}
 #endif
 }
 
@@ -623,6 +645,7 @@ static void do_init_cluster(void)
 	 * cores.
 	 */
 	init_cluster_nvlim();
+	init_cluster_csm();
 	init_cluster_slc();
 }
 
