@@ -1062,6 +1062,8 @@ int board_late_init(void)
 
 int checkboard(void)
 {
-	puts("Board: Synopsys ARC HS Development Kit\n");
+	printf("Board: Synopsys ARC %s Development Kit\n",
+	       IS_ENABLED(CONFIF_SNPS_PLAT_HSDK_4XD) ? "HS4x/4xD" : "HS");
+
 	return 0;
 };

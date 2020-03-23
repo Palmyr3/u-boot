@@ -8,7 +8,7 @@
 #include "dt-bindings/clock/snps,hsdk-cgu.h"
 
 / {
-	model = "snps,hsdk";
+	model = "snps,hsdk-4xd";
 
 	#address-cells = <1>;
 	#size-cells = <1>;
