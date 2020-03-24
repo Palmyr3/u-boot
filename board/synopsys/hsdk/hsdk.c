@@ -256,11 +256,13 @@ static void init_cluster_csm(void)
 		/*
 		 * CSM base address is 256kByte aligned but we allow to map
 		 * CSM only to aperture start (256MByte aligned)
+		 * The field in CREG_CSM_BASE is in 17:2 bits itself so we need
+		 * to shift it.
 		 */
-		u32 csm_base = env_common.csm_location.val * SZ_1K;
+		u32 csm_base = (env_common.csm_location.val * SZ_1K) << 2;
 
-		writel(csm_base, (void __iomem *)CREG_CSM_BASE);
 		write_aux_reg(ARC_AUX_CSM_ENABLE, 1);
+		writel(csm_base, (void __iomem *)CREG_CSM_BASE);
 	}
 #endif
 }
